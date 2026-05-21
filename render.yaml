@@ -23,18 +23,15 @@ services:
         sync: false          # set to your frontend URL after first deploy
       - key: PORT
         value: "3001"
+      - key: DATABASE_URL_ESPORTES
+        sync: false          # CRM Esportes Neon DB
+      - key: DATABASE_URL_SPAS
+        sync: false          # CRM Spas Neon DB
+      - key: DATABASE_URL_SAUDE
+        sync: false          # CRM Saúde Neon DB
+      - key: SYNC_INTERVAL_HOURS
+        value: "6"           # Sync automático a cada 6h
 
   # ── Frontend (Static Site) ────────────────────────
   - type: web
-    name: crm-funil-app
-    runtime: static
-    rootDir: frontend
-    buildCommand: npm install && npm run build
-    staticPublishPath: dist
-    envVars:
-      - key: VITE_API_URL
-        sync: false          # set to https://crm-funil-api.onrender.com/api
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
+    

@@ -9,6 +9,7 @@ const clientRoutes  = require('./routes/clients');
 const sdrRoutes     = require('./routes/sdrs');
 const sellerRoutes  = require('./routes/sellers');
 const companyRoutes = require('./routes/company');
+const { router: syncRoutes, runAllSyncs } = require('./routes/sync');
 
 const app = express();
 
@@ -28,12 +29,12 @@ app.use(cors({
 }));
 
 // ── Body parsing ──────────────────────────────────
-app.use(express.json({ limit: '10mb' }));   // allow base64 attachments
+app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // ── Rate limiting ─────────────────────────────────
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,  // 15 min
+  windowMs: 15 * 60 * 1000,
   max: 500,
   standardHeaders: true,
   legacyHeaders: false,
@@ -52,6 +53,7 @@ app.use('/api/clients',  clientRoutes);
 app.use('/api/sdrs',     sdrRoutes);
 app.use('/api/sellers',  sellerRoutes);
 app.use('/api/company',  companyRoutes);
+app.use('/api/sync',     syncRoutes);
 
 // ── Health check ──────────────────────────────────
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
@@ -67,4 +69,4 @@ app.use((err, _req, res, _next) => {
 
 // ── Start ─────────────────────────────────────────
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`🚀  API running on port ${PORT}`));
+app.lis

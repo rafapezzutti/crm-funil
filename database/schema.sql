@@ -95,12 +95,13 @@ CREATE INDEX IF NOT EXISTS idx_members_company    ON company_members(company_id)
 CREATE INDEX IF NOT EXISTS idx_members_user       ON company_members(user_id);
 CREATE INDEX IF NOT EXISTS idx_attachments_client ON attachments(client_id);
 
+-- ── SYNC META (rastreia última sincronização) ────
+CREATE TABLE IF NOT EXISTS sync_meta (
+  key        VARCHAR(100) PRIMARY KEY,
+  value      TEXT,
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
 -- ── TRIGGER: updated_at auto-update ──────────────
 CREATE OR REPLACE FUNCTION set_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
-$$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE TRIGGER clients_updated_at
-  BEFORE UPDATE ON clients
-  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+RETURNS
