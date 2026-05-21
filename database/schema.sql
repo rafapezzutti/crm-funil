@@ -104,4 +104,10 @@ CREATE TABLE IF NOT EXISTS sync_meta (
 
 -- ── TRIGGER: updated_at auto-update ──────────────
 CREATE OR REPLACE FUNCTION set_updated_at()
-RETURNS
+RETURNS TRIGGER AS $$
+BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE TRIGGER clients_updated_at
+  BEFORE UPDATE ON clients
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();

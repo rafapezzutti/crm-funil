@@ -84,4 +84,76 @@
   font-size: 12px;
   font-weight: 600;
   color: var(--text);
-  white-space:
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.chevron {
+  font-size: 9px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.companyDropdown {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  list-style: none;
+  padding: 4px;
+  margin: 0;
+  box-shadow: 0 8px 24px rgba(0,0,0,.35);
+  z-index: 100;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.companyOption {
+  padding: 9px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.companyOption:hover { background: var(--card); }
+.companyOptionActive { color: var(--accent); font-weight: 600; }
+
+.checkMark { font-size: 11px; }
+
+.userRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.userName {
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
+.logoutBtn {
+  background: transparent;
+  color: var(--muted);
+  padding: 4px 8px;
+  font-size: 16px;
+  border-radius: 6px;
+}
+.logoutBtn:hover { background: var(--card); color: var(--danger); }
+
+.main {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--bg);
+}

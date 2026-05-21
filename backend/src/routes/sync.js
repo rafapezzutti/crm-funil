@@ -150,14 +150,14 @@ async function syncSaude() {
     const companyId = await getOrCreateCompany('crm-saude', 'CRM Saúde');
     const { rows } = await pool.query(
       `SELECT id, name, responsible_name, responsible_cpf, phone, email,
-              street, number, complement, city, cep
+              street, number, complement, cep
        FROM clinics ORDER BY id`
     );
     for (const c of rows) {
       const razao    = c.name || '';
       const telefone = c.phone || '';
       const email    = c.email || '';
-      const endereco = [c.street, c.number, c.complement, c.city, c.cep].filter(Boolean).join(', ');
+      const endereco = [c.street, c.number, c.complement, c.cep].filter(Boolean).join(', ');
       if (!razao) { result.skipped++; continue; }
       const dup = await clientExists(companyId, razao, email, telefone);
       if (dup) { result.skipped++; continue; }

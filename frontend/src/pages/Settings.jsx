@@ -65,4 +65,67 @@ export default function Settings() {
           <label className={styles.label}>Nome da empresa
             <input value={name} onChange={e => setName(e.target.value)} required />
           </label>
-          <label className={styles.label}>S
+          <label className={styles.label}>Slug (identificador)
+            <input value={company?.slug || ''} disabled />
+          </label>
+          <label className={styles.label}>ID
+            <input value={company?.id || ''} disabled />
+          </label>
+          <button type="submit" disabled={saving || company?.role !== 'admin'} className={styles.btn}>
+            {saving ? 'Salvando…' : 'Salvar'}
+          </button>
+          {company?.role !== 'admin' && (
+            <p className={styles.hint}>Apenas administradores podem editar.</p>
+          )}
+        </form>
+      </div>
+
+      {/* ── Sync entre CRMs ── */}
+      <div className={styles.card}>
+        <h2 className={styles.cardTitle}>🔄 Sincronização com outros CRMs</h2>
+        {hasSync ? (
+          <>
+            <div className={styles.syncGrid}>
+              {Object.entries(sources).map(([key, src]) => (
+                <div key={key} className={`${styles.syncItem} ${src.configured ? styles.syncOn : styles.syncOff}`}>
+                  <span className={styles.syncName}>
+                    {key === 'esportes' ? '⚽ CRM Esportes' : key === 'spas' ? '💆 CRM Spas' : '🏥 CRM Saúde'}
+                  </span>
+                  <span className={styles.syncLabel}>
+                    {src.configured ? '✓ Configurado' : '✗ Não configurado'}
+                  </span>
+                  {src.configured && (
+                    <span className={styles.syncLast}>Último sync: {fmtDate(src.lastSync)}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+            <p className={styles.hint}>Sync automático a cada 6 horas. Use o botão para forçar agora.</p>
+            <button
+              className={styles.btnSync}
+              onClick={handleSync}
+              disabled={syncing || company?.role !== 'admin'}
+            >
+              {syncing ? '⏳ Sincronizando…' : '🔄 Sincronizar agora'}
+            </button>
+          </>
+        ) : (
+          <p className={styles.hint}>
+            Nenhuma fonte configurada. Adicione <code>DATABASE_URL_ESPORTES</code>,{' '}
+            <code>DATABASE_URL_SPAS</code> e/ou <code>DATABASE_URL_SAUDE</code> nas variáveis
+            de ambiente do Render para ativar a sincronização.
+          </p>
+        )}
+      </div>
+
+      <div className={styles.card}>
+        <h2 className={styles.cardTitle}>Sua conta</h2>
+        <div className={styles.infoRow}><span>Nome</span><strong>{user?.name}</strong></div>
+        <div className={styles.infoRow}><span>E-mail</span><strong>{user?.email}</strong></div>
+        <div className={styles.infoRow}><span>Função</span><strong>{company?.role}</strong></div>
+      </div>
+
+      <Toast toasts={toasts} />
+    </div>
+  );
+}

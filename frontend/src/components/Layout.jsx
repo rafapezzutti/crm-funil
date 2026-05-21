@@ -45,4 +45,49 @@ export default function Layout() {
               key={n.to}
               to={n.to}
               end={n.to === '/'}
-              clas
+              className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}
+            >
+              <span>{n.icon}</span> {n.label}
+            </NavLink>
+          ))}
+        </nav>
+        <div className={styles.bottom}>
+          {/* Company switcher */}
+          <div className={styles.companySwitcher} ref={dropRef}>
+            <button
+              className={`${styles.companyBtn} ${multiCompany ? styles.companyBtnClickable : ''}`}
+              title={multiCompany ? 'Trocar empresa' : company?.name}
+              onClick={() => multiCompany && setDropOpen(o => !o)}
+              disabled={switching}
+            >
+              <span className={styles.companyName}>{switching ? 'Trocando…' : company?.name}</span>
+              {multiCompany && <span className={styles.chevron}>{dropOpen ? '▲' : '▼'}</span>}
+            </button>
+            {dropOpen && (
+              <ul className={styles.companyDropdown}>
+                {companies.map(c => (
+                  <li
+                    key={c.id}
+                    className={`${styles.companyOption} ${c.id === company?.id ? styles.companyOptionActive : ''}`}
+                    onClick={() => handleSwitch(c)}
+                  >
+                    {c.id === company?.id && <span className={styles.checkMark}>✓ </span>}
+                    {c.name}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div className={styles.userRow}>
+            <span className={styles.userName}>{user?.name}</span>
+            <button className={styles.logoutBtn} onClick={logout} title="Sair">↩</button>
+          </div>
+        </div>
+      </aside>
+      <main className={styles.main}>
+        <Outlet />
+      </main>
+    </div>
+  );
+}

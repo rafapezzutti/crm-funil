@@ -181,4 +181,59 @@ router.post('/import', async (req, res) => {
     // Duplicate check
     const telNum = telefone.replace(/\D/g,'');
     const dup = await sql`
-      SELECT id FROM clients WHERE co
+      SELECT id FROM clients WHERE company_id = ${req.companyId} AND (
+        (${telNum} <> '' AND regexp_replace(telefone, '[^0-9]', '', 'g') = ${telNum})
+        OR (${email} <> '' AND lower(email) = ${email.toLowerCase()})
+        OR (${razao} <> '' AND lower(razao) = ${razao.toLowerCase()})
+      ) LIMIT 1`;
+    if (dup.length) { dups++; continue; }
+
+    await sql`INSERT INTO clients (company_id, stage, razao, contato, telefone, email)
+              VALUES (${req.companyId}, 'prosp', ${razao||null}, ${contato||null}, ${telefone||null}, ${email||null})`;
+    added++;
+  }
+  res.json({ added, dups });
+});
+
+// ── GET /api/clients/stage-report ───────────────
+// Diagnóstico: mostra distribuição de stages no banco (admin use)
+router.get('/stage-report', async (req, res) => {
+  try {
+    const report = await sql`
+      SELECT stage, COUNT(*) AS total
+      FROM clients
+      WHERE company_id = ${req.companyId}
+      GROUP BY stage
+      ORDER BY total DESC`;
+    res.json(report);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erro ao gerar relatório.' });
+  }
+});
+
+// ── POST /api/clients/fix-stages ─────────────────
+// Corrige permanentemente stages inválidos no banco
+router.post('/fix-stages', async (req, res) => {
+  try {
+    const aliases = { negoc: 'neg', negociacao: 'neg', negociação: 'neg', prospectado: 'prosp', producao: 'prod', produção: 'prod' };
+    let fixed = 0;
+    for (const [old, newStage] of Object.entries(aliases)) {
+      const result = await sql`
+        UPDATE clients SET stage = ${newStage}
+        WHERE company_id = ${req.companyId} AND lower(stage) = ${old}`;
+      fixed += result.count || 0;
+    }
+    // Also fix nulls → prosp
+    const nullFix = await sql`
+      UPDATE clients SET stage = 'prosp'
+      WHERE company_id = ${req.companyId} AND (stage IS NULL OR stage = '')`;
+    fixed += nullFix.count || 0;
+    res.json({ fixed, message: `${fixed} cliente(s) corrigido(s).` });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erro ao corrigir stages.' });
+  }
+});
+
+module.exports = router;

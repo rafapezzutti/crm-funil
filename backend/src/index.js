@@ -69,4 +69,46 @@ app.use((err, _req, res, _next) => {
 
 // ── Start ─────────────────────────────────────────
 const PORT = process.env.PORT || 3001;
-app.lis
+app.listen(PORT, () => {
+  console.log(`🚀  API running on port ${PORT}`);
+  startSyncScheduler();
+});
+
+// ── Sync Scheduler (a cada 6 horas) ──────────────
+function startSyncScheduler() {
+  const hasAnySrc = process.env.DATABASE_URL_ESPORTES
+                 || process.env.DATABASE_URL_SPAS
+                 || process.env.DATABASE_URL_SAUDE;
+
+  if (!hasAnySrc) {
+    console.log('ℹ  Sync: nenhuma fonte configurada (DATABASE_URL_ESPORTES/SPAS/SAUDE). Sync desativado.');
+    return;
+  }
+
+  const INTERVAL_MS = parseInt(process.env.SYNC_INTERVAL_HOURS || '6') * 60 * 60 * 1000;
+  console.log(`🔄  Sync agendado a cada ${INTERVAL_MS / 3600000}h`);
+
+  // Roda imediatamente na inicialização
+  setTimeout(async () => {
+    console.log('🔄  Sync inicial dos CRMs...');
+    try {
+      const results = await runAllSyncs();
+      const total = results.reduce((sum, r) => sum + (r.imported || 0), 0);
+      console.log(`✅  Sync concluído: ${total} novos registros importados`);
+    } catch (err) {
+      console.error('❌  Erro no sync inicial:', err.message);
+    }
+  }, 10_000); // 10 segundos após iniciar
+
+  // Repeat
+  setInterval(async () => {
+    console.log('🔄  Sync periódico dos CRMs...');
+    try {
+      const results = await runAllSyncs();
+      const total = results.reduce((sum, r) => sum + (r.imported || 0), 0);
+      if (total > 0) console.log(`✅  Sync: ${total} novos registros`);
+    } catch (err) {
+      console.error('❌  Erro no sync periódico:', err.message);
+    }
+  }, INTERVAL_MS);
+}

@@ -177,4 +177,29 @@ router.get('/me', auth, async (req, res) => {
   }
 });
 
-// ── POST /api/auth/
+// ── POST /api/auth/switch-company ─────────────────
+// Troca o contexto de empresa e retorna um novo token
+router.post('/switch-company', auth, async (req, res) => {
+  const { companyId } = req.body;
+  if (!companyId) return res.status(400).json({ error: 'companyId obrigatório.' });
+  try {
+    const [membership] = await sql`
+      SELECT cm.role, c.name, c.slug
+      FROM company_members cm
+      JOIN companies c ON c.id = cm.company_id
+      WHERE cm.user_id = ${req.userId} AND cm.company_id = ${companyId}`;
+    if (!membership) {
+      return res.status(403).json({ error: 'Você não tem acesso a esta empresa.' });
+    }
+    const token = signToken(req.userId, companyId, membership.role);
+    res.json({
+      token,
+      company: { id: companyId, name: membership.name, slug: membership.slug, role: membership.role },
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+module.exports = router;

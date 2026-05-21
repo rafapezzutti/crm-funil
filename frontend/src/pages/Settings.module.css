@@ -48,3 +48,38 @@
 }
 .infoRow:last-child { border-bottom: none; }
 .infoRow strong { color: var(--text); }
+
+/* ── Sync ────────────────────────────── */
+.syncGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.syncItem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  font-size: 13px;
+}
+.syncOn  { border-color: rgba(0,223,196,.35); background: rgba(0,223,196,.05); }
+.syncOff { opacity: .5; }
+
+.syncName  { font-weight: 600; flex: 1; }
+.syncLabel { font-size: 11px; }
+.syncLast  { width: 100%; font-size: 11px; color: var(--muted); }
+
+.btnSync {
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 700;
+  padding: 10px 24px;
+  align-self: flex-start;
+  border-radius: 8px;
+  margin-top: 4px;
+}
+.btnSync:disabled { opacity: .6; cursor: not-allowed; }

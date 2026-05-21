@@ -194,7 +194,7 @@ async function migrateSaude(funil) {
 
     const { rows: clinics } = await src.query(
       `SELECT id, name, responsible_name, responsible_cpf,
-              phone, email, street, number, complement, city, cep
+              phone, email, street, number, complement, cep
        FROM clinics ORDER BY id`
     );
     console.log(`  → ${clinics.length} clínicas encontradas`);
@@ -203,7 +203,7 @@ async function migrateSaude(funil) {
       const razao    = c.name || '';
       const telefone = c.phone || '';
       const email    = c.email || '';
-      const endereco = [c.street, c.number, c.complement, c.city, c.cep]
+      const endereco = [c.street, c.number, c.complement, c.cep]
                         .filter(Boolean).join(', ');
 
       const dup = await clientExists(funil, company.id, razao, email, telefone);
