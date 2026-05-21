@@ -1,0 +1,67 @@
+.page { padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+.loading { display:flex; align-items:center; justify-content:center; height:100%; color:var(--muted); }
+.pageTitle { font-size: 20px; font-weight: 700; }
+
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; align-items: start; }
+
+.section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sectionTitle { font-size: 15px; font-weight: 600; }
+
+.addForm { display: flex; flex-direction: column; gap: 8px; }
+.addBtn {
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 700;
+  padding: 8px;
+  width: 100%;
+}
+.addBtn:disabled { opacity: .6; }
+
+.list { display: flex; flex-direction: column; gap: 6px; }
+.empty { font-size: 13px; color: var(--muted); }
+
+.personRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.personName  { font-size: 13px; font-weight: 500; }
+.personEmail { font-size: 12px; color: var(--muted); }
+
+.removeBtn {
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  padding: 3px 7px;
+  border-radius: 4px;
+}
+.removeBtn:hover { background: var(--border); color: var(--danger); }
+
+.roleTag {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: var(--border);
+  color: var(--muted);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.roleTag.admin { background: rgba(0,223,196,.15); color: var(--accent); }
+
+@media (max-width: 900px) {
+  .grid { grid-template-columns: 1fr; }
+}

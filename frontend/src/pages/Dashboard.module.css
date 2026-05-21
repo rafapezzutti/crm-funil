@@ -1,0 +1,70 @@
+.page { padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+
+.loading { display:flex; align-items:center; justify-content:center; height:100%; color:var(--muted); }
+
+.pageTitle { font-size: 20px; font-weight: 700; }
+
+.kpiGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+
+.kpi {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+}
+.kpiAccent { border-color: var(--accent); background: rgba(0,223,196,.07); }
+
+.kpiVal   { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
+.kpiLabel { font-size: 13px; color: var(--muted); }
+
+.chartsRow { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+.chartCard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.chartTitle { font-size: 14px; font-weight: 600; margin-bottom: 16px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+
+.empty { color: var(--muted); font-size: 13px; }
+
+/* Funnel */
+.funnel { display: flex; flex-direction: column; gap: 8px; }
+.funnelRow { display: flex; align-items: center; gap: 10px; }
+.funnelBar {
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #080D35;
+  font-weight: 700;
+  font-size: 13px;
+  transition: width .4s;
+}
+.funnelLabel { font-size: 13px; color: var(--muted); white-space: nowrap; }
+
+/* Donut */
+.donutWrap { display: flex; align-items: center; gap: 20px; }
+.legend { display: flex; flex-direction: column; gap: 6px; }
+.legendItem { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+/* Bar chart */
+.barChart { display: flex; flex-direction: column; gap: 10px; }
+.barRow { display: flex; align-items: center; gap: 8px; }
+.barLabel { font-size: 12px; color: var(--muted); width: 100px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.barTrack { flex: 1; background: var(--border); border-radius: 4px; height: 16px; overflow: hidden; }
+.barFill { height: 100%; border-radius: 4px; transition: width .4s; }
+.barVal { font-size: 12px; font-weight: 600; width: 24px; text-align: right; }
+
+@media (max-width: 900px) {
+  .kpiGrid { grid-template-columns: 1fr 1fr; }
+  .chartsRow { grid-template-columns: 1fr; }
+}

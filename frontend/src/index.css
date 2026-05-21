@@ -1,0 +1,81 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #080D35;
+  --surface:   #0F1645;
+  --card:      #141C50;
+  --border:    #1E2A6E;
+  --accent:    #00DFC4;
+  --accent2:   #7B5EFF;
+  --text:      #E8EAF6;
+  --muted:     #8892C8;
+  --danger:    #FF5370;
+  --warn:      #FFB74D;
+  --success:   #00DFC4;
+  --radius:    10px;
+  --shadow:    0 4px 24px rgba(0,0,0,.4);
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  font-size: 14px;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+button {
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  border: none;
+  border-radius: var(--radius);
+  transition: opacity .15s, transform .1s;
+}
+button:hover { opacity: .9; }
+button:active { transform: scale(.97); }
+
+input, select, textarea {
+  font-family: inherit;
+  font-size: 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 8px 12px;
+  outline: none;
+  transition: border-color .2s;
+  width: 100%;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+
+/* scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* toast */
+.toast-container {
+  position: fixed; bottom: 24px; right: 24px;
+  display: flex; flex-direction: column; gap: 8px;
+  z-index: 9999;
+}
+.toast {
+  padding: 12px 20px;
+  border-radius: var(--radius);
+  background: var(--card);
+  border-left: 4px solid var(--accent);
+  color: var(--text);
+  font-size: 13px;
+  box-shadow: var(--shadow);
+  animation: slideIn .25s ease;
+}
+.toast.error  { border-color: var(--danger); }
+.toast.warn   { border-color: var(--warn); }
+@keyframes slideIn {
+  from { transform: translateX(60px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
