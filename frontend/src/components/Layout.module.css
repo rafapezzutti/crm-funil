@@ -54,41 +54,34 @@
   gap: 8px;
 }
 
-.company {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* ── Company switcher ─────────────────────────── */
+.companySwitcher {
+  position: relative;
 }
 
-.userRow {
+.companyBtn {
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-
-.userName {
-  font-size: 13px;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 140px;
-}
-
-.logoutBtn {
+  gap: 6px;
   background: transparent;
-  color: var(--muted);
-  padding: 4px 8px;
-  font-size: 16px;
-  border-radius: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  cursor: default;
+  text-align: left;
 }
-.logoutBtn:hover { background: var(--card); color: var(--danger); }
+.companyBtnClickable {
+  cursor: pointer;
+}
+.companyBtnClickable:hover {
+  background: var(--card);
+  border-color: var(--accent);
+}
 
-.main {
-  flex: 1;
-  overflow-y: auto;
-  background: var(--bg);
-}
+.companyName {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  white-space:

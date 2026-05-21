@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import React, { useState, useRef, useEffect } from 'react';
+import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import styles from './Layout.module.css';
 
@@ -11,9 +11,29 @@ const NAV = [
 ];
 
 export default function Layout() {
-  const { user, company, companies, logout } = useAuth();
-  const navigate = useNavigate();
-  const [menuOpen, setMenuOpen] = useState(false);
+  const { user, company, companies, logout, switchCompany } = useAuth();
+  const [dropOpen, setDropOpen]   = useState(false);
+  const [switching, setSwitching] = useState(false);
+  const dropRef = useRef(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handler(e) {
+      if (dropRef.current && !dropRef.current.contains(e.target)) setDropOpen(false);
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  async function handleSwitch(comp) {
+    if (comp.id === company?.id) { setDropOpen(false); return; }
+    setSwitching(true);
+    setDropOpen(false);
+    await switchCompany(comp);
+    setSwitching(false);
+  }
+
+  const multiCompany = companies && companies.length > 1;
 
   return (
     <div className={styles.shell}>
@@ -25,23 +45,4 @@ export default function Layout() {
               key={n.to}
               to={n.to}
               end={n.to === '/'}
-              className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}
-            >
-              <span>{n.icon}</span> {n.label}
-            </NavLink>
-          ))}
-        </nav>
-        <div className={styles.bottom}>
-          <div className={styles.company} title={company?.name}>{company?.name}</div>
-          <div className={styles.userRow}>
-            <span className={styles.userName}>{user?.name}</span>
-            <button className={styles.logoutBtn} onClick={logout} title="Sair">↩</button>
-          </div>
-        </div>
-      </aside>
-      <main className={styles.main}>
-        <Outlet />
-      </main>
-    </div>
-  );
-}
+              clas

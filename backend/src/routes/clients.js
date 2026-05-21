@@ -6,6 +6,11 @@ const XLSX    = require('xlsx');
 // All routes require authentication
 router.use(auth);
 
+// Valid stages — used for normalization
+const VALID_STAGES = ['prosp', 'neg', 'piloto', 'prod'];
+// Legacy stage aliases that may exist in older data
+const STAGE_ALIASES = { negoc: 'neg', negociacao: 'neg', negociação: 'neg', prospectado: 'prosp', producao: 'prod', produção: 'prod' };
+
 // ── GET /api/clients ─────────────────────────────
 router.get('/', async (req, res) => {
   const { q, setor, stage } = req.query;
@@ -25,6 +30,15 @@ router.get('/', async (req, res) => {
       WHERE c.company_id = ${req.companyId}
       GROUP BY c.id, s.name, v.name
       ORDER BY c.created_at DESC`;
+
+    // Normalize legacy stage values in-memory so they always show up in the kanban
+    rows = rows.map(r => {
+      if (!VALID_STAGES.includes(r.stage)) {
+        const normalized = STAGE_ALIASES[r.stage?.toLowerCase()] || 'prosp';
+        return { ...r, stage: normalized };
+      }
+      return r;
+    });
 
     if (stage) rows = rows.filter(r => r.stage === stage);
     if (setor) rows = rows.filter(r => r.setor === setor);
@@ -167,18 +181,4 @@ router.post('/import', async (req, res) => {
     // Duplicate check
     const telNum = telefone.replace(/\D/g,'');
     const dup = await sql`
-      SELECT id FROM clients WHERE company_id = ${req.companyId} AND (
-        (${telNum} <> '' AND regexp_replace(telefone, '[^0-9]', '', 'g') = ${telNum})
-        OR (${email} <> '' AND lower(email) = ${email.toLowerCase()})
-        OR (${razao} <> '' AND lower(razao) = ${razao.toLowerCase()})
-      ) LIMIT 1`;
-    if (dup.length) { dups++; continue; }
-
-    await sql`INSERT INTO clients (company_id, stage, razao, contato, telefone, email)
-              VALUES (${req.companyId}, 'prosp', ${razao||null}, ${contato||null}, ${telefone||null}, ${email||null})`;
-    added++;
-  }
-  res.json({ added, dups });
-});
-
-module.exports = router;
+      SELECT id FROM clients WHERE co
