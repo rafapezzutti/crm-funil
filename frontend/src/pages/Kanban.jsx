@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../api';
+import { useAuth } from '../AuthContext';
 import ClientModal from '../components/ClientModal';
 import ClientDetail from '../components/ClientDetail';
 import Toast from '../components/Toast';
@@ -17,6 +18,7 @@ const STAGES = [
 const SETORES = ['Varejo','Alimentação','Saúde','Educação','Serviços','Indústria','Tecnologia','Outros'];
 
 export default function Kanban() {
+  const { company } = useAuth();
   const [clients, setClients]       = useState([]);
   const [sdrs, setSdrs]             = useState([]);
   const [sellers, setSellers]       = useState([]);
@@ -246,6 +248,7 @@ export default function Kanban() {
       {detailClient && (
         <ClientDetail
           client={detailClient}
+          companySlug={company?.slug}
           onClose={() => setDetailClient(null)}
           onEdit={() => { setEditClient(detailClient); setDetailClient(null); setModalOpen(true); }}
           onDelete={() => { setDeleteId(detailClient.id); setConfirmDel('single'); }}

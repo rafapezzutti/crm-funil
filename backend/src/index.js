@@ -10,6 +10,7 @@ const sdrRoutes     = require('./routes/sdrs');
 const sellerRoutes  = require('./routes/sellers');
 const companyRoutes = require('./routes/company');
 const { router: syncRoutes, runAllSyncs } = require('./routes/sync');
+const contractRoutes = require('./routes/contracts');
 
 const app = express();
 
@@ -53,7 +54,8 @@ app.use('/api/clients',  clientRoutes);
 app.use('/api/sdrs',     sdrRoutes);
 app.use('/api/sellers',  sellerRoutes);
 app.use('/api/company',  companyRoutes);
-app.use('/api/sync',     syncRoutes);
+app.use('/api/sync',      syncRoutes);
+app.use('/api/contracts', contractRoutes);
 
 // ── Health check ──────────────────────────────────
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
