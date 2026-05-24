@@ -98,6 +98,9 @@ router.post('/generate', auth, async (req, res) => {
     const {
       clientId,
       tipo,             // 'spa' | 'saude' — vem do frontend
+      razao,            // razão social editável (enviada pelo frontend)
+      cnpj,             // CNPJ editável (enviado pelo frontend)
+      endereco,         // endereço editável (enviado pelo frontend)
       representante, nacionalidade, estadoCivil, profissao,
       cpfRep, rgRep, cargo,
       dataContrato,
@@ -145,9 +148,9 @@ router.post('/generate', auth, async (req, res) => {
 
     // ── Substituições principais ──────────────────────────────────────────────
     const subs = {
-      '[RAZÃO SOCIAL DO CONTRATANTE]':     esc(client.razao),
-      '[00.000.000/0000-00]':              esc(client.cnpj),
-      '[ENDEREÇO COMPLETO, CIDADE/UF, CEP]': esc(client.endereco),
+      '[RAZÃO SOCIAL DO CONTRATANTE]':     esc(razao     || client.razao),
+      '[00.000.000/0000-00]':              esc(cnpj      || client.cnpj),
+      '[ENDEREÇO COMPLETO, CIDADE/UF, CEP]': esc(endereco  || client.endereco),
       '[NOME DO REPRESENTANTE LEGAL]':     esc(representante),
       '[Nome do Representante Legal]':     esc(representante),
       '[nacionalidade]':                   esc(nacionalidade),
