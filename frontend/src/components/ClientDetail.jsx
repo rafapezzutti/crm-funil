@@ -46,10 +46,10 @@ export default function ClientDetail({ client: c, companySlug, onClose, onEdit, 
             <div className={styles.section}>
               <h3>Contrato</h3>
               <div className={styles.grid2}>
-                <Field label="Qtd TVs"       value={c.tvs} />
-                <Field label="Custo mensal"  value={c.custo ? `R$ ${Number(c.custo).toLocaleString('pt-BR', { minimumFractionDigits:2 })}` : null} />
-                <Field label="SDR"           value={c.sdr_name} />
-                <Field label="Vendedor"      value={c.seller_name} />
+                <Field label="Qtd TVs"      value={c.tvs} />
+                <Field label="Custo mensal" value={c.custo ? 'R$ ' + Number(c.custo).toLocaleString('pt-BR', { minimumFractionDigits:2 }) : null} />
+                <Field label="SDR"          value={c.sdr_name} />
+                <Field label="Vendedor"     value={c.seller_name} />
               </div>
             </div>
             {c.obs && (
@@ -58,24 +58,50 @@ export default function ClientDetail({ client: c, companySlug, onClose, onEdit, 
                 <p style={{ fontSize:'13px', lineHeight:'1.6', color:'var(--text)' }}>{c.obs}</p>
               </div>
             )}
-            {c.attachments?.length > 0 && (
+            {c.attachments && c.attachments.length > 0 && (
               <div className={styles.section}>
                 <h3>Anexos ({c.attachments.length})</h3>
                 <div style={{ display:'flex', flexWrap:'wrap', gap:'8px' }}>
-                  {c.attachments.map((a, i) => (
-                    <a
-                      key={i}
-                      href={`data:${a.type};base64,${a.data}`}
-                      download={a.name}
-                      style={{ fontSize:'12px', background:'var(--card)', border:'1px solid var(--border)',
-                        borderRadius:'6px', padding:'4px 10px', color:'var(--accent)', textDecoration:'none' }}
-                    >
-                      📎 {a.name}
-                    </a>
-                  ))}
+                  {c.attachments.map(function(a, i) {
+                    return (
+                      <a
+                        key={i}
+                        href={'data:' + a.type + ';base64,' + a.data}
+                        download={a.name}
+                        style={{ fontSize:'12px', background:'var(--card)', border:'1px solid var(--border)',
+                          borderRadius:'6px', padding:'4px 10px', color:'var(--accent)', textDecoration:'none' }}
+                      >
+                        {'📎'} {a.name}
+                      </a>
+                    );
+                  })}
                 </div>
               </div>
             )}
           </div>
 
-          <div classN
+          <div className={styles.modalFooter} style={{ padding:'0 24px 20px', gap:'8px' }}>
+            <button className={styles.dangerBtn} onClick={onDelete}>Excluir</button>
+            <div style={{ flex:1 }} />
+            <button
+              className={styles.cancelBtn}
+              onClick={function() { setShowContract(true); }}
+              style={{ display:'flex', alignItems:'center', gap:4 }}
+            >
+              Gerar Contrato
+            </button>
+            <button className={styles.editBtn} onClick={onEdit}>Editar</button>
+          </div>
+        </div>
+      </div>
+
+      {showContract && (
+        <ContractModal
+          client={c}
+          companySlug={companySlug}
+          onClose={function() { setShowContract(false); }}
+        />
+      )}
+    </>
+  );
+}
