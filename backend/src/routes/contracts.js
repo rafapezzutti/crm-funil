@@ -14,11 +14,14 @@ const { sql: funil } = require('../config/db');
 const TEMPLATES_DIR = path.join(__dirname, '../../templates');
 
 // ── Template selection ────────────────────────────────────────────────────────
-function selectTemplate(companySlug, setor) {
-  if (companySlug === 'crm-spas') return 'Contrato_SaaS_Spa_CRM_Pezzutti.docx';
+// 'tipo' vem do frontend: 'spa' | 'saude'
+// Se não informado, tenta derivar pelo slug da empresa de origem do cliente
+function selectTemplate(tipo, companySlug) {
+  if (tipo === 'spa')   return 'Contrato_SaaS_Spa_CRM_Pezzutti.docx';
+  if (tipo === 'saude') return 'Contrato_SaaS_Saude_CRM_Pezzutti.docx';
+  // fallback por slug (caso antigo)
+  if (companySlug === 'crm-spas')  return 'Contrato_SaaS_Spa_CRM_Pezzutti.docx';
   if (companySlug === 'crm-saude') return 'Contrato_SaaS_Saude_CRM_Pezzutti.docx';
-  // Fallback por setor
-  if (setor === 'Saúde') return 'Contrato_SaaS_Saude_CRM_Pezzutti.docx';
   return 'Contrato_SaaS_Spa_CRM_Pezzutti.docx';
 }
 
@@ -94,12 +97,18 @@ router.post('/generate', auth, async (req, res) => {
   try {
     const {
       clientId,
+      tipo,             // 'spa' | 'saude' — vem do frontend
       representante, nacionalidade, estadoCivil, profissao,
       cpfRep, rgRep, cargo,
-      dataContrato,     // "YYYY-MM-DD" ou string por extenso
-      // Específico Saúde
+      dataContrato,
+      valorMensal,      // valor editável enviado pelo usuário
+      // Saúde
       modalidade,       // 'clinica' | 'autonomo'
-      quantidade,       // número
+      quantidade,
+      precoUnitario,    // preço por unidade (editável)
+      // Spa
+      qtdSpa,
+      precoSpa,
     } = req.body;
 
     if (!clientId) return res.status(400).json({ error: 'clientId é obrigatório.' });
@@ -115,7 +124,7 @@ router.post('/generate', auth, async (req, res) => {
     const client = rows[0];
 
     // ── Seleciona template ────────────────────────────────────────────────────
-    const templateName = selectTemplate(client.company_slug, client.setor);
+    const templateName = selectTemplate(tipo, client.company_slug);
     const templatePath = path.join(TEMPLATES_DIR, templateName);
     if (!fs.existsSync(templatePath)) {
       return res.status(404).json({ error: `Template não encontrado: ${templateName}` });
@@ -126,8 +135,8 @@ router.post('/generate', auth, async (req, res) => {
     const xmlEntry = zip.getEntry('word/document.xml');
     let   xml      = xmlEntry.getData().toString('utf8');
 
-    // ── Valores calculados ────────────────────────────────────────────────────
-    const custoNum     = parseFloat(client.custo) || 0;
+    // ── Valores — usa o valor enviado pelo frontend (editável), fallback para o CRM
+    const custoNum     = parseFloat(valorMensal) || parseFloat(client.custo) || 0;
     const custoFmt     = formatBRL(custoNum);
     const custoExtenso = valorPorExtenso(custoNum);
     const dataFmt      = /^\d{4}-\d{2}-\d{2}$/.test(dataContrato || '')
@@ -159,13 +168,15 @@ router.post('/generate', auth, async (req, res) => {
 
     // ── Anexo I — Saúde ───────────────────────────────────────────────────────
     if (templateName.includes('Saude')) {
-      const qtd   = parseInt(quantidade) || 1;
-      const isCli = modalidade !== 'autonomo';
-      const precoCli  = 59.90;
-      const precoAuto = 45.90;
+      const qtd       = parseInt(quantidade) || 1;
+      const isCli     = modalidade !== 'autonomo';
+      // Usa preço enviado pelo frontend; defaults dos contratos como fallback
+      const precoUnit = parseFloat(precoUnitario) || (isCli ? 59.90 : 45.90);
+      const precoCli  = isCli ? precoUnit : 59.90;
+      const precoAuto = isCli ? 45.90 : precoUnit;
       const totalCli  = formatBRL(qtd * precoCli);
       const totalAuto = formatBRL(qtd * precoAuto);
-      const totalVal  = isCli ? qtd * precoCli : qtd * precoAuto;
+      const totalVal  = qtd * precoUnit;
       const totalFmt  = formatBRL(totalVal);
       const totalExt  = valorPorExtenso(totalVal);
 
@@ -195,8 +206,8 @@ router.post('/generate', auth, async (req, res) => {
 
     // ── Anexo I — Spa ─────────────────────────────────────────────────────────
     if (templateName.includes('Spa')) {
-      const qtd      = parseInt(quantidade) || 1;
-      const preco    = 79.90;
+      const qtd      = parseInt(qtdSpa) || parseInt(quantidade) || 1;
+      const preco    = parseFloat(precoSpa) || 79.90;
       const totalVal = qtd * preco;
       const totalFmt = formatBRL(totalVal);
       const totalExt = valorPorExtenso(totalVal);
