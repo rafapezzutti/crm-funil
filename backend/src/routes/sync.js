@@ -124,10 +124,10 @@ async function syncSpas() {
       const dup = await clientExists(companyId, razao, email, telefone);
       if (dup) { result.skipped++; continue; }
       await insertClient(companyId, {
-        stage: c.ativo === 1 ? 'prod' : 'neg',
+        stage: (c.ativo === true || c.ativo === 1 || c.ativo === '1') ? 'prod' : 'neg',
         razao, contato: razao, telefone, email,
         endereco: c.endereco || null,
-        setor: 'Saúde',
+        setor: 'Serviços',
         obs: `Sync CRM Spas (id=${c.id})`,
       });
       result.imported++;
@@ -136,6 +136,7 @@ async function syncSpas() {
   } catch (err) {
     result.errors++;
     result.error = err.message;
+    console.error('[sync:spas]', err.message);
   } finally {
     await pool.end().catch(() => {});
   }
