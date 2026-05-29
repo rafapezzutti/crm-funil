@@ -92,6 +92,25 @@ async function ensureSchema() {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )`;
 
+
+  // WhatsApp conversation archives
+  await sql\`
+    CREATE TABLE IF NOT EXISTS lead_whatsapp_chats (
+      id            SERIAL PRIMARY KEY,
+      lead_id       INT  NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+      company_id    INT  NOT NULL,
+      filename      VARCHAR(200),
+      contact_name  VARCHAR(200),
+      source        VARCHAR(50) DEFAULT 'whatsapp',
+      content       TEXT,
+      messages      JSONB,
+      message_count INT DEFAULT 0,
+      date_start    TIMESTAMPTZ,
+      date_end      TIMESTAMPTZ,
+      uploaded_by   INT,
+      created_at    TIMESTAMPTZ DEFAULT NOW()
+    )\`;
+
   // Seed default plans if empty
   await seedPlans();
 }

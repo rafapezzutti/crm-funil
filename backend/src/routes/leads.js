@@ -306,4 +306,83 @@ router.put('/:id/onboarding/:item', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── GET /api/leads/:id/whatsapp ───────────────────────────────────────────────
+// Lista conversas WhatsApp anexadas ao lead
+router.get('/:id/whatsapp', auth, async (req, res) => {
+  try {
+    const rows = await sql\`
+      SELECT id, filename, contact_name, source, message_count,
+             date_start, date_end, created_at
+      FROM   lead_whatsapp_chats
+      WHERE  lead_id    = \${req.params.id}
+        AND  company_id = \${req.companyId}
+      ORDER  BY created_at DESC\`;
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── GET /api/leads/:id/whatsapp/:chatId ───────────────────────────────────────
+// Retorna mensagens completas de uma conversa
+router.get('/:id/whatsapp/:chatId', auth, async (req, res) => {
+  try {
+    const [chat] = await sql\`
+      SELECT * FROM lead_whatsapp_chats
+      WHERE id = \${req.params.chatId}
+        AND lead_id    = \${req.params.id}
+        AND company_id = \${req.companyId}\`;
+    if (!chat) return res.status(404).json({ error: 'Conversa não encontrada.' });
+    res.json(chat);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── POST /api/leads/:id/whatsapp ──────────────────────────────────────────────
+// Salva uma exportação de conversa WhatsApp
+router.post('/:id/whatsapp', auth, async (req, res) => {
+  try {
+    const { filename, contactName, source, content, messages } = req.body;
+    if (!content) return res.status(400).json({ error: 'Conteúdo da conversa é obrigatório.' });
+
+    const [lead] = await sql\`
+      SELECT id FROM leads WHERE id = \${req.params.id} AND company_id = \${req.companyId}\`;
+    if (!lead) return res.status(404).json({ error: 'Lead não encontrado.' });
+
+    const msgArray  = messages || [];
+    const count     = msgArray.length;
+    const dateStart = msgArray.length > 0 ? msgArray[0].ts  : null;
+    const dateEnd   = msgArray.length > 0 ? msgArray[msgArray.length - 1].ts : null;
+
+    const [chat] = await sql\`
+      INSERT INTO lead_whatsapp_chats
+        (lead_id, company_id, filename, contact_name, source, content, messages, message_count, date_start, date_end, uploaded_by)
+      VALUES
+        (\${req.params.id}, \${req.companyId}, \${filename||null}, \${contactName||null},
+         \${source||'whatsapp'}, \${content}, \${JSON.stringify(msgArray)}, \${count},
+         \${dateStart||null}, \${dateEnd||null}, \${req.userId})
+      RETURNING id, filename, contact_name, message_count, date_start, date_end, created_at\`;
+
+    // Activity log
+    const [u] = await sql\`SELECT name FROM users WHERE id = \${req.userId}\`;
+    await recordActivity(req.params.id, req.userId, u?.name, 'whatsapp',
+      \`Conversa WhatsApp anexada: \${filename || 'sem nome'} (\${count} mensagens)\`);
+
+    res.status(201).json(chat);
+  } catch (err) {
+    console.error('[whatsapp chat POST]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── DELETE /api/leads/:id/whatsapp/:chatId ────────────────────────────────────
+router.delete('/:id/whatsapp/:chatId', auth, async (req, res) => {
+  try {
+    await sql\`
+      DELETE FROM lead_whatsapp_chats
+      WHERE id = \${req.params.chatId}
+        AND lead_id    = \${req.params.id}
+        AND company_id = \${req.companyId}\`;
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+
 module.exports = router;
