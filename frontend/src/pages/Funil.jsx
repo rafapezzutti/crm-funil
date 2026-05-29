@@ -8,6 +8,7 @@ const STAGES = [
   { key:'negociacao', label:'Negociação',  color:'var(--stage-negociacao)', icon:'🤝' },
   { key:'piloto',     label:'Piloto',      color:'var(--stage-piloto)',     icon:'🧪' },
   { key:'producao',   label:'Produção',    color:'var(--stage-producao)',   icon:'🏭' },
+  { key:'perdido',    label:'Perdidos',    color:'var(--stage-perdido)',    icon:'❌' },
 ];
 
 const CRM_BADGE = { saude:'badge-saude', spa:'badge-spa', esportes:'badge-esportes', pet:'badge-pet' };
@@ -119,7 +120,7 @@ export default function Funil() {
     setLoading(true);
     try {
       const { data } = await api.get('/leads', { params: { q, crm: crmF, score: scoreF } });
-      setLeads(data.filter(l => !['perdido','cancelado'].includes(l.stage)));
+      setLeads(data.filter(l => l.stage !== 'cancelado'));
     } catch(e) { console.error(e); }
     finally { setLoading(false); }
   }
@@ -182,7 +183,7 @@ export default function Funil() {
         <div style={{textAlign:'center', padding:40, color:'var(--muted)'}}>Carregando…</div>
       ) : (
         <div style={{
-          display:'grid', gridTemplateColumns:'repeat(4,1fr)',
+          display:'grid', gridTemplateColumns:'repeat(5,1fr)',
           gap:12, alignItems:'start', overflowX:'auto',
         }}>
           {STAGES.map(s => {
@@ -235,7 +236,7 @@ export default function Funil() {
               <label>Motivo *</label>
               <select value={motivo} onChange={e => setMotivo(e.target.value)}>
                 <option value="">Selecione…</option>
-                {['Sem orçamento','Sem interesse','Concorrente','Não respondeu','Projeto cancelado','Outro'].map(m =>
+                {['Preço','Concorrente','Não gostou','Não tem interesse'].map(m =>
                   <option key={m} value={m}>{m}</option>)}
               </select>
             </div>

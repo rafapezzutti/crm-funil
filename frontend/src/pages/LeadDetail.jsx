@@ -20,7 +20,7 @@ const ONBOARDING_LABEL = {
 };
 const STAGES_AVANCADOS = ['negociacao','piloto','producao'];
 const STAGES_RECUAR    = ['prospeccao','negociacao','piloto'];
-const MOTIVOS_PERDA    = ['Sem orçamento','Sem interesse','Concorrente','Não respondeu','Projeto cancelado','Outro'];
+const MOTIVOS_PERDA    = ['Preço','Concorrente','Não gostou','Não tem interesse'];
 
 function fmt(v)    { return Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:2}); }
 function fmtDate(d){ return d ? new Date(d).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—'; }
@@ -52,6 +52,12 @@ export default function LeadDetail() {
   const [trialDays, setTrialDays] = useState(10);
   const [stageLoad, setStageLoad] = useState(false);
 
+  // WhatsApp chats
+  const [waChats,   setWaChats]   = useState([]);
+  const [waLoading, setWaLoading] = useState(false);
+  const [waViewing, setWaViewing] = useState(null);   // {id, messages, filename, ...}
+  const [waViewLoad,setWaViewLoad]= useState(false);
+
   // Deletar
   const [deleting,  setDeleting]  = useState(false);
 
@@ -62,6 +68,8 @@ export default function LeadDetail() {
     try {
       const { data } = await api.get(`/leads/${id}`);
       setLead(data);
+      // Carrega lista de conversas WA (sem mensagens, só metadados)
+      api.get(`/leads/${id}/whatsapp`).then(r => setWaChats(r.data)).catch(()=>{});
     } catch(e) { console.error(e); }
     finally { setLoading(false); }
   }
@@ -210,7 +218,7 @@ export default function LeadDetail() {
 
       {/* Tabs */}
       <div style={{display:'flex', gap:4, marginBottom:16, borderBottom:'1px solid var(--border)', paddingBottom:0}}>
-        {[['timeline','📋 Timeline'], ['propostas','📄 Propostas']].map(([k,l]) => (
+        {[['timeline','📋 Timeline'], ['propostas','📄 Propostas'], ['whatsapp','💬 WhatsApp']].map(([k,l]) => (
           <button key={k} onClick={() => setTab(k)}
             style={{
               padding:'8px 16px', border:'none', background:'none', cursor:'pointer',
@@ -308,6 +316,19 @@ export default function LeadDetail() {
               </div>
             ))}
         </div>
+      )}
+
+
+      {/* Tab: WhatsApp */}
+      {tab==='whatsapp' && (
+        <WhatsAppTab
+          leadId={id}
+          leadName={lead.empresa || lead.nome}
+          chats={waChats}
+          setChats={setWaChats}
+          viewing={waViewing}
+          setViewing={setWaViewing}
+        />
       )}
 
       {/* Dialog mover etapa */}
