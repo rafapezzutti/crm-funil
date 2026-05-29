@@ -1,46 +1,59 @@
-import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './AuthContext';
+import Sidebar from './components/Sidebar';
 import Login      from './pages/Login';
-import Register   from './pages/Register';
-import ForgotPassword  from './pages/ForgotPassword';
-import ResetPassword   from './pages/ResetPassword';
-import Layout     from './components/Layout';
-import Kanban     from './pages/Kanban';
 import Dashboard  from './pages/Dashboard';
-import Team       from './pages/Team';
-import Settings   from './pages/Settings';
+import Funil      from './pages/Funil';
+import LeadDetail from './pages/LeadDetail';
+import Producao   from './pages/Producao';
+import Planos     from './pages/Planos';
+import Sync       from './pages/Sync';
 
 function PrivateRoute({ children }) {
+  
   const { user, loading } = useAuth();
-  if (loading) return <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', color:'var(--muted)' }}>Carregando…</div>;
+  if (loading) return null;
   return user ? children : <Navigate to="/login" replace />;
 }
 
-function PublicRoute({ children }) {
-  const { user, loading } = useAuth();
-  if (loading) return null;
-  return user ? <Navigate to="/" replace /> : children;
+function Shell({ children }) {
+  return (
+    <div className="app-shell">
+      <Sidebar />
+      <div className="main-content">
+        {children}
+      </div>
+    </div>
+  );
 }
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
+    <BrowserRouter>
+      <AuthProvider>
         <Routes>
-          <Route path="/login"          element={<PublicRoute><Login /></PublicRoute>} />
-          <Route path="/register"       element={<PublicRoute><Register /></PublicRoute>} />
-          <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
-          <Route path="/reset-password"  element={<PublicRoute><ResetPassword /></PublicRoute>} />
-          <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
-            <Route index        element={<Kanban />} />
-            <Route path="dashboard" element={<Dashboard />} />
-            <Route path="team"      element={<Team />} />
-            <Route path="settings"  element={<Settings />} />
-          </Route>
+          <Route path="/login" element={<Login />} />
+          <Route path="/" element={
+            <PrivateRoute><Shell><Dashboard /></Shell></PrivateRoute>
+          } />
+          <Route path="/funil" element={
+            <PrivateRoute><Shell><Funil /></Shell></PrivateRoute>
+          } />
+          <Route path="/leads/:id" element={
+            <PrivateRoute><Shell><LeadDetail /></Shell></PrivateRoute>
+          } />
+          <Route path="/producao" element={
+            <PrivateRoute><Shell><Producao /></Shell></PrivateRoute>
+          } />
+          <Route path="/planos" element={
+            <PrivateRoute><Shell><Planos /></Shell></PrivateRoute>
+          } />
+          <Route path="/sync" element={
+            <PrivateRoute><Shell><Sync /></Shell></PrivateRoute>
+          } />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+      </AuthProvider>
+    </BrowserRouter>
   );
 }

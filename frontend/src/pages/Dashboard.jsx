@@ -1,179 +1,196 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api';
-import styles from './Dashboard.module.css';
 
-const STAGES = [
-  { key:'prosp',  label:'Prospectados',  color:'#8892C8' },
-  { key:'neg',    label:'Em Negociação', color:'#7B5EFF' },
-  { key:'piloto', label:'Em Piloto',     color:'#FFB74D' },
-  { key:'prod',   label:'Em Produção',   color:'#00DFC4' },
-];
+const CRM_LABEL = { saude:'CRM Saúde', spa:'CRM Spa', esportes:'CRM Esportes', pet:'CRM Pet' };
+const CRM_COLOR = { saude:'var(--crm-saude)', spa:'var(--crm-spa)', esportes:'var(--crm-esportes)', pet:'var(--crm-pet)' };
+const SCORE_ICON = { muito_quente:'🔥', quente:'🌶️', morno:'⚡', frio:'💧', muito_frio:'❄️' };
+const TIPO_ICON = {
+  criacao:'✨', mudanca_etapa:'📍', ligacao:'📞', email:'✉️',
+  whatsapp:'💬', demo:'🖥', proposta:'📄', obs:'💬', trial_criado:'🚀', convertido:'🏆', perdido:'❌',
+};
+
+function fmt(v) {
+  return Number(v).toLocaleString('pt-BR', { style:'currency', currency:'BRL', minimumFractionDigits:2 });
+}
+function fmtDate(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+}
+function daysAgo(d) {
+  const diff = Math.round((Date.now() - new Date(d)) / 86400000);
+  return diff === 0 ? 'hoje' : diff === 1 ? 'ontem' : `${diff}d atrás`;
+}
 
 export default function Dashboard() {
-  const [clients, setClients] = useState([]);
+  const nav = useNavigate();
+  const [data,   setData]   = useState(null);
+  const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get('/clients')
-      .then(r => setClients(r.data))
+    Promise.all([api.get('/dashboard'), api.get('/dashboard/alerts')])
+      .then(([d, a]) => { setData(d.data); setAlerts(a.data); })
+      .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className={styles.loading}>Carregando…</div>;
-
-  const total = clients.length;
-  const byStage  = s => clients.filter(c => c.stage === s);
-  const prodList = byStage('prod');
-
-  // MRR
-  const mrr = prodList.reduce((s, c) => s + (Number(c.custo) || 0), 0);
-  // TVs
-  const tvs = prodList.reduce((s, c) => s + (Number(c.tvs) || 0), 0);
-
-  // Setor distribution
-  const setorMap = {};
-  clients.forEach(c => { if (c.setor) setorMap[c.setor] = (setorMap[c.setor] || 0) + 1; });
-  const setores = Object.entries(setorMap).sort((a,b) => b[1]-a[1]);
-
-  // SDR ranking
-  const sdrMap = {};
-  clients.forEach(c => { if (c.sdr_name) sdrMap[c.sdr_name] = (sdrMap[c.sdr_name] || 0) + 1; });
-  const sdrRank = Object.entries(sdrMap).sort((a,b) => b[1]-a[1]);
-
-  // Seller ranking (prod only)
-  const sellerMap = {};
-  prodList.forEach(c => { if (c.seller_name) sellerMap[c.seller_name] = (sellerMap[c.seller_name] || 0) + 1; });
-  const sellerRank = Object.entries(sellerMap).sort((a,b) => b[1]-a[1]);
-
-  return (
-    <div className={styles.page}>
-      <h1 className={styles.pageTitle}>Dashboard</h1>
-
-      {/* ── KPI cards ── */}
-      <div className={styles.kpiGrid}>
-        <KpiCard label="Total de clientes" value={total} />
-        <KpiCard label="Em Produção"        value={prodList.length} accent />
-        <KpiCard label="MRR"                value={`R$ ${mrr.toLocaleString('pt-BR',{minimumFractionDigits:0})}`} />
-        <KpiCard label="TVs ativas"         value={tvs} />
-      </div>
-
-      <div className={styles.chartsRow}>
-        {/* Funnel */}
-        <div className={styles.chartCard}>
-          <h2 className={styles.chartTitle}>Funil de vendas</h2>
-          <Funnel stages={STAGES} byStage={byStage} total={total} />
-        </div>
-
-        {/* Setor donut */}
-        <div className={styles.chartCard}>
-          <h2 className={styles.chartTitle}>Clientes por setor</h2>
-          <DonutChart data={setores} />
-        </div>
-      </div>
-
-      <div className={styles.chartsRow}>
-        {/* SDR bar */}
-        <div className={styles.chartCard}>
-          <h2 className={styles.chartTitle}>Leads por SDR</h2>
-          <BarChart data={sdrRank} color="#7B5EFF" />
-        </div>
-        {/* Seller bar */}
-        <div className={styles.chartCard}>
-          <h2 className={styles.chartTitle}>Clientes em produção por Vendedor</h2>
-          <BarChart data={sellerRank} color="#00DFC4" />
-        </div>
-      </div>
+  if (loading) return (
+    <div className="page" style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:300 }}>
+      <span className="spinner">⏳</span>
     </div>
   );
-}
 
-function KpiCard({ label, value, accent }) {
-  return (
-    <div className={`${styles.kpi} ${accent ? styles.kpiAccent : ''}`}>
-      <div className={styles.kpiVal}>{value}</div>
-      <div className={styles.kpiLabel}>{label}</div>
-    </div>
-  );
-}
+  const stage = data?.byStage || {};
+  const mrr   = data?.mrr    || {};
 
-function Funnel({ stages, byStage, total }) {
-  if (!total) return <p className={styles.empty}>Sem dados</p>;
+  const stages = [
+    { key:'prospeccao', label:'Prospecção',  color:'var(--stage-prospeccao)', icon:'🎯' },
+    { key:'negociacao', label:'Negociação',  color:'var(--stage-negociacao)', icon:'🤝' },
+    { key:'piloto',     label:'Piloto',      color:'var(--stage-piloto)',     icon:'🧪' },
+    { key:'producao',   label:'Produção',    color:'var(--stage-producao)',   icon:'🏭' },
+    { key:'perdido',    label:'Perdidos',    color:'var(--stage-perdido)',    icon:'❌' },
+    { key:'cancelado',  label:'Cancelados',  color:'var(--stage-cancelado)', icon:'🚫' },
+  ];
+
   return (
-    <div className={styles.funnel}>
-      {stages.map((s, i) => {
-        const cnt = byStage(s.key).length;
-        const w = total > 0 ? Math.max(20, Math.round((cnt / total) * 100)) : 20;
-        return (
-          <div key={s.key} className={styles.funnelRow} style={{ '--w': `${100 - i * 10}%` }}>
-            <div className={styles.funnelBar} style={{ background: s.color, width:`${w}%`, minWidth:'24px' }}>
-              {cnt > 0 && <span>{cnt}</span>}
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <h1>Dashboard</h1>
+          <span className="text-muted" style={{fontSize:13}}>Visão executiva da operação</span>
+        </div>
+        <button className="btn btn-primary" onClick={() => nav('/funil')}>
+          🎯 Abrir Funil
+        </button>
+      </div>
+
+      {/* KPIs por etapa */}
+      <div className="kpi-grid">
+        {stages.map(s => (
+          <div key={s.key} className="kpi-card" style={{ borderLeft:`3px solid ${s.color}` }}>
+            <div className="kpi-label">{s.icon} {s.label}</div>
+            <div className="kpi-value" style={{ color: s.color }}>{stage[s.key] || 0}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:24 }}>
+        {/* MRR */}
+        <div className="card">
+          <div className="section-title">💰 Receita Mensal Recorrente</div>
+          <div style={{ fontSize:32, fontWeight:800, color:'var(--success)', marginBottom:12 }}>
+            {fmt(mrr.total || 0)}
+          </div>
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {['saude','spa','esportes','pet'].map(crm => (
+              mrr[crm] > 0 && (
+                <div key={crm} style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    <div style={{ width:10, height:10, borderRadius:'50%', background: CRM_COLOR[crm] }} />
+                    <span style={{ fontSize:13 }}>{CRM_LABEL[crm]}</span>
+                  </div>
+                  <div style={{ display:'flex', gap:12, alignItems:'center' }}>
+                    <span style={{ fontSize:12, color:'var(--muted)' }}>
+                      {stage.producao ? Math.round((mrr[crm]/mrr.total)*100) : 0}%
+                    </span>
+                    <span style={{ fontWeight:700, color: CRM_COLOR[crm] }}>{fmt(mrr[crm])}</span>
+                  </div>
+                </div>
+              )
+            ))}
+          </div>
+          {data?.ticket > 0 && (
+            <div style={{ marginTop:12, paddingTop:12, borderTop:'1px solid var(--border)' }}>
+              <span className="text-muted" style={{fontSize:12}}>Ticket médio:</span>
+              <span style={{fontWeight:700, marginLeft:8}}>{fmt(data.ticket)}</span>
             </div>
-            <span className={styles.funnelLabel}>{s.label}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-const PIE_COLORS = ['#00DFC4','#7B5EFF','#FFB74D','#FF5370','#29B6F6','#66BB6A','#FFA726','#AB47BC'];
-
-function DonutChart({ data }) {
-  if (!data.length) return <p className={styles.empty}>Sem dados</p>;
-  const total = data.reduce((s, [,v]) => s + v, 0);
-  const r = 60, cx = 80, cy = 80, stroke = 28;
-  const circ = 2 * Math.PI * r;
-  let offset = 0;
-  const slices = data.slice(0, 8).map(([label, val], i) => {
-    const pct = val / total;
-    const dash = pct * circ;
-    const s = { label, val, pct, dash, offset, color: PIE_COLORS[i % PIE_COLORS.length] };
-    offset += dash;
-    return s;
-  });
-  return (
-    <div className={styles.donutWrap}>
-      <svg width="160" height="160" viewBox="0 0 160 160">
-        {slices.map((s, i) => (
-          <circle key={i}
-            cx={cx} cy={cy} r={r}
-            fill="none"
-            stroke={s.color}
-            strokeWidth={stroke}
-            strokeDasharray={`${s.dash} ${circ - s.dash}`}
-            strokeDashoffset={-s.offset + circ / 4}
-            style={{ transition:'stroke-dasharray .4s' }}
-          />
-        ))}
-        <text x={cx} y={cy-6} textAnchor="middle" fill="#E8EAF6" fontSize="22" fontWeight="700">{total}</text>
-        <text x={cx} y={cy+14} textAnchor="middle" fill="#8892C8" fontSize="11">total</text>
-      </svg>
-      <div className={styles.legend}>
-        {slices.map((s, i) => (
-          <div key={i} className={styles.legendItem}>
-            <span className={styles.dot} style={{ background: s.color }} />
-            <span>{s.label} ({s.val})</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function BarChart({ data, color }) {
-  if (!data.length) return <p className={styles.empty}>Sem dados</p>;
-  const max = data[0][1];
-  return (
-    <div className={styles.barChart}>
-      {data.slice(0, 8).map(([label, val]) => (
-        <div key={label} className={styles.barRow}>
-          <span className={styles.barLabel}>{label}</span>
-          <div className={styles.barTrack}>
-            <div className={styles.barFill} style={{ width:`${(val/max)*100}%`, background: color }} />
-          </div>
-          <span className={styles.barVal}>{val}</span>
+          )}
         </div>
-      ))}
+
+        {/* Alertas */}
+        <div className="card">
+          <div className="section-title" style={{marginBottom:alerts.length?12:20}}>
+            🔔 Alertas ({alerts.length})
+          </div>
+          {alerts.length === 0 ? (
+            <div style={{ textAlign:'center', padding:'24px 0', color:'var(--muted)', fontSize:13 }}>
+              ✅ Nenhum alerta pendente
+            </div>
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column', gap:6, maxHeight:260, overflowY:'auto' }}>
+              {alerts.map((a, i) => (
+                <div key={i}
+                  className={`alert alert-${a.severity}`}
+                  style={{ cursor:'pointer' }}
+                  onClick={() => a.lead_id && nav(`/leads/${a.lead_id}`)}
+                >
+                  <span style={{flexShrink:0}}>
+                    {a.tipo==='trial_vencido'?'⏰':a.tipo==='trial_vencendo'?'⚠️':a.tipo==='acao_atrasada'?'📅':'😶'}
+                  </span>
+                  <span style={{fontSize:12, lineHeight:1.4}}>{a.descricao}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+        {/* Testes próximos do vencimento */}
+        {data?.trials?.length > 0 && (
+          <div className="card">
+            <div className="section-title">🧪 Pilotos em Atenção</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+              {data.trials.map(t => (
+                <div key={t.id} style={{display:'flex', justifyContent:'space-between', alignItems:'center', cursor:'pointer'}}
+                  onClick={() => nav(`/leads/${t.id}`)}>
+                  <div>
+                    <div style={{fontWeight:600, fontSize:13}}>{t.empresa || t.nome}</div>
+                    <div style={{fontSize:11, color:'var(--muted)'}}>
+                      {t.dias_restantes < 0
+                        ? `Vencido há ${Math.abs(Math.round(t.dias_restantes))} dias`
+                        : `Vence em ${Math.round(t.dias_restantes)} dias`}
+                    </div>
+                  </div>
+                  <span className={`badge badge-${t.dias_restantes < 0 ? 'perdido':'piloto'}`}>
+                    {t.dias_restantes < 0 ? 'Vencido' : 'Atenção'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Feed de atividades recentes */}
+        <div className="card" style={{gridColumn: data?.trials?.length > 0 ? 'auto' : '1/-1'}}>
+          <div className="section-title">📋 Atividades Recentes</div>
+          {!data?.recentActivity?.length ? (
+            <div style={{color:'var(--muted)', fontSize:13, textAlign:'center', padding:'16px 0'}}>Sem atividades recentes.</div>
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column', gap:10, maxHeight:280, overflowY:'auto' }}>
+              {data.recentActivity.map(a => (
+                <div key={a.id} style={{ display:'flex', gap:10, alignItems:'flex-start', cursor:'pointer' }}
+                  onClick={() => nav(`/leads/${a.lead_id}`)}>
+                  <div style={{ width:28, height:28, borderRadius:'50%', background:'var(--card2)',
+                    display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>
+                    {TIPO_ICON[a.tipo] || '💬'}
+                  </div>
+                  <div style={{flex:1, minWidth:0}}>
+                    <div style={{fontWeight:600, fontSize:12, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>
+                      {a.lead_empresa || a.lead_nome}
+                    </div>
+                    <div style={{fontSize:12, color:'var(--muted)', lineHeight:1.4}}>{a.descricao}</div>
+                  </div>
+                  <div style={{fontSize:11, color:'var(--muted)', flexShrink:0, whiteSpace:'nowrap'}}>
+                    {daysAgo(a.created_at)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

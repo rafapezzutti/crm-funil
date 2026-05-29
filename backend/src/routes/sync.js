@@ -1,18 +1,16 @@
 /**
- * CRM Funil — Sync Route
- * ======================
- * GET  /api/sync/status   → situação das fontes + última sincronização
- * POST /api/sync/run      → dispara sync manual (admin only)
+ * CRM Pezzutti — Sync Route
+ * Importa clientes ativos dos CRMs externos (Saúde, Spa, Esportes)
+ * para a tabela `leads` do CRM Funil como stage='producao'.
  *
- * O sync periódico automático é iniciado em src/index.js via node-cron.
+ * GET  /api/sync/status  → situação das fontes + última sync
+ * POST /api/sync/run     → dispara sync manual (admin)
  */
-
 const router = require('express').Router();
 const auth   = require('../middleware/auth');
 const { sql: funil } = require('../config/db');
 const { Pool } = require('pg');
 
-// ── Source databases ──────────────────────────────────────────────────────────
 const SOURCES = {
   esportes: process.env.DATABASE_URL_ESPORTES,
   spas:     process.env.DATABASE_URL_SPAS,
@@ -23,11 +21,9 @@ function srcPool(url) {
   return new Pool({ connectionString: url, ssl: { rejectUnauthorized: false }, max: 3 });
 }
 
-// ── Track last sync in DB ─────────────────────────────────────────────────────
 async function getLastSync(source) {
   try {
-    const res = await funil`
-      SELECT value FROM sync_meta WHERE key = ${'last_sync_' + source}`;
+    const res = await funil`SELECT value FROM sync_meta WHERE key = ${'last_sync_'+source}`;
     return res[0]?.value || null;
   } catch { return null; }
 }
@@ -41,188 +37,141 @@ async function setLastSync(source) {
   return val;
 }
 
-// ── Duplicate check ───────────────────────────────────────────────────────────
-async function clientExists(companyId, razao, email, telefone) {
+// Verifica duplicata por nome/email/telefone
+async function leadExists(companyId, nome, email, telefone) {
   const rows = await funil`
-    SELECT id FROM clients
+    SELECT id FROM leads
     WHERE company_id = ${companyId} AND (
-      (${razao || ''} <> '' AND lower(razao) = lower(${razao || ''}))
-      OR (${email || ''} <> '' AND lower(email) = lower(${email || ''}))
-      OR (${telefone || ''} <> '' AND regexp_replace(COALESCE(telefone,''),'[^0-9]','','g')
-          = regexp_replace(${telefone || ''},'[^0-9]','','g'))
+      (${nome||''}     <> '' AND lower(nome)     = lower(${nome||''}))
+      OR (${email||''} <> '' AND lower(email)    = lower(${email||''}))
+      OR (${telefone||''} <> '' AND regexp_replace(COALESCE(telefone,''),'[^0-9]','','g')
+          = regexp_replace(${telefone||''},'[^0-9]','','g'))
     ) LIMIT 1`;
   return rows.length > 0;
 }
 
-async function insertClient(companyId, data) {
+async function insertLead(companyId, crm, data) {
   await funil`
-    INSERT INTO clients (company_id, stage, razao, contato, telefone, email, endereco, setor, cnpj, obs)
-    VALUES (${companyId}, ${data.stage||'prod'}, ${data.razao||null}, ${data.contato||null},
-            ${data.telefone||null}, ${data.email||null}, ${data.endereco||null},
-            ${data.setor||null}, ${data.cnpj||null}, ${data.obs||null})`;
+    INSERT INTO leads (company_id, stage, nome, empresa, telefone, email, crm,
+                       origem, crm_externo_id, crm_externo_slug)
+    VALUES (${companyId}, 'producao',
+            ${data.nome||null}, ${data.empresa||null}, ${data.telefone||null},
+            ${data.email||null}, ${crm},
+            'sync', ${data.externo_id||null}, ${crm})`;
 }
 
-async function getOrCreateCompany(slug, name) {
-  const existing = await funil`SELECT id FROM companies WHERE slug = ${slug}`;
-  if (existing.length) return existing[0].id;
-  const [created] = await funil`
-    INSERT INTO companies (name, slug) VALUES (${name}, ${slug}) RETURNING id`;
-  return created.id;
-}
-
-// ── Sync each source ──────────────────────────────────────────────────────────
-async function syncEsportes() {
-  if (!SOURCES.esportes) return { source: 'esportes', skipped: true, reason: 'DATABASE_URL_ESPORTES não configurada' };
-  const pool = srcPool(SOURCES.esportes);
-  const result = { source: 'esportes', imported: 0, skipped: 0, errors: 0 };
+// ── Sync Esportes ─────────────────────────────────────────────────────────────
+async function syncEsportes(companyId) {
+  const url = SOURCES.esportes;
+  if (!url) return { source:'esportes', skipped:true, reason:'DATABASE_URL_ESPORTES não configurado' };
+  const pool = srcPool(url);
   try {
-    const companyId = await getOrCreateCompany('crm-esportes', 'CRM Esportes');
-    const { rows } = await pool.query(
-      `SELECT id, name, responsible, cpf_cnpj, phone, email, street, number, city, state, cep
-       FROM establishments ORDER BY id`
-    );
-    for (const e of rows) {
-      const razao    = e.name || '';
-      const telefone = e.phone || '';
-      const email    = e.email || '';
-      const endereco = [e.street, e.number, e.city, e.state, e.cep].filter(Boolean).join(', ');
-      if (!razao) { result.skipped++; continue; }
-      const dup = await clientExists(companyId, razao, email, telefone);
-      if (dup) { result.skipped++; continue; }
-      await insertClient(companyId, {
-        stage: 'prod', razao, contato: e.responsible || razao,
-        telefone, email, endereco, setor: 'Esportes',
-        cnpj: e.cpf_cnpj || null,
-        obs: `Sync CRM Esportes (id=${e.id})`,
-      });
-      result.imported++;
+    const { rows } = await pool.query(`
+      SELECT id, razao_social AS nome, fantasia AS empresa,
+             telefone, email, ativo
+      FROM   clientes
+      WHERE  ativo = true OR ativo = 1
+      LIMIT  2000`);
+    let imported = 0;
+    for (const c of rows) {
+      const exists = await leadExists(companyId, c.nome, c.email, c.telefone);
+      if (!exists) {
+        await insertLead(companyId, 'esportes', { ...c, externo_id: c.id });
+        imported++;
+      }
     }
     await setLastSync('esportes');
+    return { source:'esportes', total: rows.length, imported };
   } catch (err) {
-    result.errors++;
-    result.error = err.message;
-  } finally {
-    await pool.end().catch(() => {});
-  }
-  return result;
+    console.error('[sync:esportes]', err.message);
+    return { source:'esportes', error: err.message };
+  } finally { await pool.end(); }
 }
 
-async function syncSpas() {
-  if (!SOURCES.spas) return { source: 'spas', skipped: true, reason: 'DATABASE_URL_SPAS não configurada' };
-  const pool = srcPool(SOURCES.spas);
-  const result = { source: 'spas', imported: 0, skipped: 0, errors: 0 };
+// ── Sync Spas ─────────────────────────────────────────────────────────────────
+async function syncSpas(companyId) {
+  const url = SOURCES.spas;
+  if (!url) return { source:'spas', skipped:true, reason:'DATABASE_URL_SPAS não configurado' };
+  const pool = srcPool(url);
   try {
-    const companyId = await getOrCreateCompany('crm-spas', 'CRM Spas');
-    const { rows } = await pool.query(
-      `SELECT id, nome, email, telefone, endereco, ativo FROM clinicas ORDER BY id`
-    );
+    const { rows } = await pool.query(`
+      SELECT id, razao_social AS nome, fantasia AS empresa,
+             telefone, email, ativo
+      FROM   clientes LIMIT 2000`);
+    let imported = 0;
     for (const c of rows) {
-      const razao    = c.nome || '';
-      const telefone = c.telefone || '';
-      const email    = c.email || '';
-      if (!razao) { result.skipped++; continue; }
-      const dup = await clientExists(companyId, razao, email, telefone);
-      if (dup) { result.skipped++; continue; }
-      await insertClient(companyId, {
-        stage: (c.ativo === true || c.ativo === 1 || c.ativo === '1') ? 'prod' : 'neg',
-        razao, contato: razao, telefone, email,
-        endereco: c.endereco || null,
-        setor: 'Serviços',
-        obs: `Sync CRM Spas (id=${c.id})`,
-      });
-      result.imported++;
+      const ativo = c.ativo === true || c.ativo === 1 || c.ativo === '1';
+      if (!ativo) continue;
+      const exists = await leadExists(companyId, c.nome, c.email, c.telefone);
+      if (!exists) {
+        await insertLead(companyId, 'spa', { ...c, externo_id: c.id });
+        imported++;
+      }
     }
     await setLastSync('spas');
+    return { source:'spas', total: rows.length, imported };
   } catch (err) {
-    result.errors++;
-    result.error = err.message;
     console.error('[sync:spas]', err.message);
-  } finally {
-    await pool.end().catch(() => {});
-  }
-  return result;
+    return { source:'spas', error: err.message };
+  } finally { await pool.end(); }
 }
 
-async function syncSaude() {
-  if (!SOURCES.saude) return { source: 'saude', skipped: true, reason: 'DATABASE_URL_SAUDE não configurada' };
-  const pool = srcPool(SOURCES.saude);
-  const result = { source: 'saude', imported: 0, skipped: 0, errors: 0 };
+// ── Sync Saúde ────────────────────────────────────────────────────────────────
+async function syncSaude(companyId) {
+  const url = SOURCES.saude;
+  if (!url) return { source:'saude', skipped:true, reason:'DATABASE_URL_SAUDE não configurado' };
+  const pool = srcPool(url);
   try {
-    const companyId = await getOrCreateCompany('crm-saude', 'CRM Saúde');
-    const { rows } = await pool.query(
-      `SELECT id, name, responsible_name, responsible_cpf, phone, email,
-              street, number, complement, cep
-       FROM clinics ORDER BY id`
-    );
+    const { rows } = await pool.query(`
+      SELECT id, razao_social AS nome, fantasia AS empresa,
+             telefone, email
+      FROM   clientes LIMIT 2000`);
+    let imported = 0;
     for (const c of rows) {
-      const razao    = c.name || '';
-      const telefone = c.phone || '';
-      const email    = c.email || '';
-      const endereco = [c.street, c.number, c.complement, c.cep].filter(Boolean).join(', ');
-      if (!razao) { result.skipped++; continue; }
-      const dup = await clientExists(companyId, razao, email, telefone);
-      if (dup) { result.skipped++; continue; }
-      await insertClient(companyId, {
-        stage: 'prod', razao,
-        contato: c.responsible_name || razao,
-        telefone, email, endereco,
-        setor: 'Saúde',
-        cnpj: c.responsible_cpf || null,
-        obs: `Sync CRM Saúde (id=${c.id})`,
-      });
-      result.imported++;
+      const exists = await leadExists(companyId, c.nome, c.email, c.telefone);
+      if (!exists) {
+        await insertLead(companyId, 'saude', { ...c, externo_id: c.id });
+        imported++;
+      }
     }
     await setLastSync('saude');
+    return { source:'saude', total: rows.length, imported };
   } catch (err) {
-    result.errors++;
-    result.error = err.message;
-  } finally {
-    await pool.end().catch(() => {});
-  }
-  return result;
+    console.error('[sync:saude]', err.message);
+    return { source:'saude', error: err.message };
+  } finally { await pool.end(); }
 }
 
-// ── Run all syncs ─────────────────────────────────────────────────────────────
-async function runAllSyncs() {
+async function runAllSyncs(companyId) {
   const results = await Promise.allSettled([
-    syncEsportes(),
-    syncSpas(),
-    syncSaude(),
+    syncEsportes(companyId),
+    syncSpas(companyId),
+    syncSaude(companyId),
   ]);
   return results.map(r => r.status === 'fulfilled' ? r.value : { error: r.reason?.message });
 }
 
-// ── Routes ────────────────────────────────────────────────────────────────────
-
-// GET /api/sync/status — mostra última sync de cada fonte
+// ── GET /api/sync/status ──────────────────────────────────────────────────────
 router.get('/status', auth, async (req, res) => {
   try {
-    const [lastEsportes, lastSpas, lastSaude] = await Promise.all([
-      getLastSync('esportes'),
-      getLastSync('spas'),
-      getLastSync('saude'),
-    ]);
-    res.json({
-      sources: {
-        esportes: { configured: !!SOURCES.esportes, lastSync: lastEsportes },
-        spas:     { configured: !!SOURCES.spas,     lastSync: lastSpas },
-        saude:    { configured: !!SOURCES.saude,     lastSync: lastSaude },
-      },
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+    const sources = await Promise.all(Object.keys(SOURCES).map(async key => ({
+      source:    key,
+      configured: !!SOURCES[key],
+      last_sync: await getLastSync(key),
+    })));
+    res.json({ sources });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// POST /api/sync/run — dispara sync manual (admin only)
+// ── POST /api/sync/run ────────────────────────────────────────────────────────
 router.post('/run', auth, async (req, res) => {
-  if (req.role !== 'admin') return res.status(403).json({ error: 'Apenas administradores.' });
   try {
-    const results = await runAllSyncs();
+    // Pega companyId do primeiro registro (single-tenant)
+    const [co] = await funil`SELECT id FROM companies LIMIT 1`;
+    const companyId = co?.id || req.companyId;
+    const results = await runAllSyncs(companyId);
     res.json({ ok: true, results });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 module.exports = { router, runAllSyncs };
