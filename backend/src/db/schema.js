@@ -94,7 +94,7 @@ async function ensureSchema() {
 
 
   // WhatsApp conversation archives
-  await sql\`
+  await sql`
     CREATE TABLE IF NOT EXISTS lead_whatsapp_chats (
       id            SERIAL PRIMARY KEY,
       lead_id       INT  NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
@@ -109,7 +109,7 @@ async function ensureSchema() {
       date_end      TIMESTAMPTZ,
       uploaded_by   INT,
       created_at    TIMESTAMPTZ DEFAULT NOW()
-    )\`;
+    )`;
 
   // Seed default plans if empty
   await seedPlans();
