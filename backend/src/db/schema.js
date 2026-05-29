@@ -1,6 +1,6 @@
 /**
  * CRM Pezzutti — Schema Auto-Setup
- * company_id = UUID | responsavel_id/user_id = INT (serial do users)
+ * company_id, responsavel_id, user_id, uploaded_by = UUID (todos ids são UUID neste projeto)
  * Drop explícito por nome para garantir recriação correta
  */
 const { sql } = require('../config/db');
@@ -55,7 +55,7 @@ async function ensureSchema(force = false) {
       plano_id          INT,
       valor_plano       DECIMAL(10,2),
       valor_negociado   DECIMAL(10,2),
-      responsavel_id    INT,
+      responsavel_id    UUID,
       data_fechamento   DATE,
       proxima_acao      VARCHAR(50),
       data_proxima_acao DATE,
@@ -74,7 +74,7 @@ async function ensureSchema(force = false) {
     CREATE TABLE IF NOT EXISTS lead_activities (
       id          SERIAL PRIMARY KEY,
       lead_id     INT  NOT NULL,
-      user_id     INT,
+      user_id     UUID,
       user_name   VARCHAR(200),
       tipo        VARCHAR(50),
       descricao   TEXT NOT NULL,
@@ -116,7 +116,7 @@ async function ensureSchema(force = false) {
       message_count INT DEFAULT 0,
       date_start    TIMESTAMPTZ,
       date_end      TIMESTAMPTZ,
-      uploaded_by   INT,
+      uploaded_by   UUID,
       created_at    TIMESTAMPTZ DEFAULT NOW()
     )`));
 

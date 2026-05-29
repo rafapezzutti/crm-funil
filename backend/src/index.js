@@ -13,6 +13,8 @@ const { router: syncRoutes, runAllSyncs } = require('./routes/sync');
 
 const app = express();
 
+app.set('trust proxy', 1);
+
 app.use(helmet());
 
 const allowedOrigins = [process.env.FRONTEND_URL || 'http://localhost:5173'];
