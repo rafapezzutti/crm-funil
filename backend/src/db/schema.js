@@ -1,7 +1,6 @@
 /**
  * CRM Pezzutti — Schema Auto-Setup
- * Usa BIGINT para company_id (compatível com companies existente)
- * Remove FK para companies (evita conflito de tipo) — integridade garantida pela aplicação
+ * company_id e user_id usam UUID (compatível com o schema existente do Neon)
  */
 const { sql } = require('../config/db');
 
@@ -15,13 +14,28 @@ async function runSafe(name, fn) {
   }
 }
 
-async function ensureSchema() {
+// Dropa e recria as tabelas novas (sem dados ainda)
+async function dropNew() {
+  const tables = [
+    'lead_whatsapp_chats','onboarding_items','lead_proposals',
+    'lead_activities','leads','plans',
+  ];
+  for (const t of tables) {
+    await sql`DROP TABLE IF EXISTS ${sql(t)} CASCADE`;
+  }
+}
+
+async function ensureSchema(force = false) {
   const results = [];
+
+  if (force) {
+    await runSafe('drop_tables', () => dropNew());
+  }
 
   results.push(await runSafe('plans', () => sql`
     CREATE TABLE IF NOT EXISTS plans (
       id         SERIAL PRIMARY KEY,
-      company_id BIGINT NOT NULL,
+      company_id UUID   NOT NULL,
       crm        VARCHAR(50)   NOT NULL,
       nome       VARCHAR(100)  NOT NULL,
       valor      DECIMAL(10,2) NOT NULL DEFAULT 0,
@@ -32,7 +46,7 @@ async function ensureSchema() {
   results.push(await runSafe('leads', () => sql`
     CREATE TABLE IF NOT EXISTS leads (
       id                SERIAL PRIMARY KEY,
-      company_id        BIGINT NOT NULL,
+      company_id        UUID   NOT NULL,
       nome              VARCHAR(200) NOT NULL,
       empresa           VARCHAR(200),
       email             VARCHAR(200),
@@ -44,7 +58,7 @@ async function ensureSchema() {
       plano_id          INT,
       valor_plano       DECIMAL(10,2),
       valor_negociado   DECIMAL(10,2),
-      responsavel_id    BIGINT,
+      responsavel_id    UUID,
       data_fechamento   DATE,
       proxima_acao      VARCHAR(50),
       data_proxima_acao DATE,
@@ -63,7 +77,7 @@ async function ensureSchema() {
     CREATE TABLE IF NOT EXISTS lead_activities (
       id          SERIAL PRIMARY KEY,
       lead_id     INT  NOT NULL,
-      user_id     BIGINT,
+      user_id     UUID,
       user_name   VARCHAR(200),
       tipo        VARCHAR(50),
       descricao   TEXT NOT NULL,
@@ -74,7 +88,7 @@ async function ensureSchema() {
   results.push(await runSafe('lead_proposals', () => sql`
     CREATE TABLE IF NOT EXISTS lead_proposals (
       id          SERIAL PRIMARY KEY,
-      lead_id     INT NOT NULL,
+      lead_id     INT  NOT NULL,
       versao      INT DEFAULT 1,
       valor       DECIMAL(10,2),
       data_envio  DATE,
@@ -95,8 +109,8 @@ async function ensureSchema() {
   results.push(await runSafe('lead_whatsapp_chats', () => sql`
     CREATE TABLE IF NOT EXISTS lead_whatsapp_chats (
       id            SERIAL PRIMARY KEY,
-      lead_id       INT NOT NULL,
-      company_id    BIGINT NOT NULL,
+      lead_id       INT  NOT NULL,
+      company_id    UUID NOT NULL,
       filename      VARCHAR(200),
       contact_name  VARCHAR(200),
       source        VARCHAR(50) DEFAULT 'whatsapp',
@@ -105,7 +119,7 @@ async function ensureSchema() {
       message_count INT DEFAULT 0,
       date_start    TIMESTAMPTZ,
       date_end      TIMESTAMPTZ,
-      uploaded_by   BIGINT,
+      uploaded_by   UUID,
       created_at    TIMESTAMPTZ DEFAULT NOW()
     )`));
 

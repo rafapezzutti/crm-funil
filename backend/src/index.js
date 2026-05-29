@@ -41,9 +41,10 @@ app.use('/api/sync',      syncRoutes);
 
 
 // ── Setup endpoint (força criação das tabelas) ────────────────────────────────
-app.get('/api/setup', async (_req, res) => {
+app.get('/api/setup', async (req, res) => {
   try {
-    const results = await ensureSchema();
+    const force = req.query.force === 'true';
+    const results = await ensureSchema(force);
     res.json({ ok: true, results });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
