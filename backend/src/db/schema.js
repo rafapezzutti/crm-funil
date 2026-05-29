@@ -1,41 +1,38 @@
 /**
  * CRM Pezzutti — Schema Auto-Setup
- * company_id e user_id usam UUID (compatível com o schema existente do Neon)
+ * company_id = UUID | responsavel_id/user_id = INT (serial do users)
+ * Drop explícito por nome para garantir recriação correta
  */
 const { sql } = require('../config/db');
 
 async function runSafe(name, fn) {
-  try {
-    await fn();
-    return { ok: true, table: name };
-  } catch (err) {
+  try { await fn(); return { ok: true, table: name }; }
+  catch (err) {
     console.error(`[schema] ${name}:`, err.message);
     return { ok: false, table: name, error: err.message };
   }
 }
 
-// Dropa e recria as tabelas novas (sem dados ainda)
-async function dropNew() {
-  const tables = [
-    'lead_whatsapp_chats','onboarding_items','lead_proposals',
-    'lead_activities','leads','plans',
-  ];
-  for (const t of tables) {
-    await sql`DROP TABLE IF EXISTS ${sql(t)} CASCADE`;
-  }
+async function dropAll() {
+  await sql`DROP TABLE IF EXISTS lead_whatsapp_chats CASCADE`;
+  await sql`DROP TABLE IF EXISTS onboarding_items        CASCADE`;
+  await sql`DROP TABLE IF EXISTS lead_proposals          CASCADE`;
+  await sql`DROP TABLE IF EXISTS lead_activities         CASCADE`;
+  await sql`DROP TABLE IF EXISTS leads                   CASCADE`;
+  await sql`DROP TABLE IF EXISTS plans                   CASCADE`;
 }
 
 async function ensureSchema(force = false) {
   const results = [];
 
   if (force) {
-    await runSafe('drop_tables', () => dropNew());
+    await runSafe('drop_tables', () => dropAll());
   }
 
   results.push(await runSafe('plans', () => sql`
     CREATE TABLE IF NOT EXISTS plans (
       id         SERIAL PRIMARY KEY,
-      company_id UUID   NOT NULL,
+      company_id UUID          NOT NULL,
       crm        VARCHAR(50)   NOT NULL,
       nome       VARCHAR(100)  NOT NULL,
       valor      DECIMAL(10,2) NOT NULL DEFAULT 0,
@@ -46,7 +43,7 @@ async function ensureSchema(force = false) {
   results.push(await runSafe('leads', () => sql`
     CREATE TABLE IF NOT EXISTS leads (
       id                SERIAL PRIMARY KEY,
-      company_id        UUID   NOT NULL,
+      company_id        UUID         NOT NULL,
       nome              VARCHAR(200) NOT NULL,
       empresa           VARCHAR(200),
       email             VARCHAR(200),
@@ -58,7 +55,7 @@ async function ensureSchema(force = false) {
       plano_id          INT,
       valor_plano       DECIMAL(10,2),
       valor_negociado   DECIMAL(10,2),
-      responsavel_id    UUID,
+      responsavel_id    INT,
       data_fechamento   DATE,
       proxima_acao      VARCHAR(50),
       data_proxima_acao DATE,
@@ -77,7 +74,7 @@ async function ensureSchema(force = false) {
     CREATE TABLE IF NOT EXISTS lead_activities (
       id          SERIAL PRIMARY KEY,
       lead_id     INT  NOT NULL,
-      user_id     UUID,
+      user_id     INT,
       user_name   VARCHAR(200),
       tipo        VARCHAR(50),
       descricao   TEXT NOT NULL,
@@ -119,7 +116,7 @@ async function ensureSchema(force = false) {
       message_count INT DEFAULT 0,
       date_start    TIMESTAMPTZ,
       date_end      TIMESTAMPTZ,
-      uploaded_by   UUID,
+      uploaded_by   INT,
       created_at    TIMESTAMPTZ DEFAULT NOW()
     )`));
 
