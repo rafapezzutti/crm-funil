@@ -1,12 +1,24 @@
 /**
  * CRM Pezzutti — Schema Auto-Setup
  * Cria todas as tabelas na inicialização se não existirem.
+ * Cada tabela é criada de forma independente — se uma falhar, as outras continuam.
  */
 const { sql } = require('../config/db');
 
+async function runSafe(name, fn) {
+  try {
+    await fn();
+    return { ok: true, table: name };
+  } catch (err) {
+    console.error(`[schema] Erro ao criar ${name}:`, err.message);
+    return { ok: false, table: name, error: err.message };
+  }
+}
+
 async function ensureSchema() {
-  // Plans
-  await sql`
+  const results = [];
+
+  results.push(await runSafe('plans', () => sql`
     CREATE TABLE IF NOT EXISTS plans (
       id         SERIAL PRIMARY KEY,
       company_id INT REFERENCES companies(id) ON DELETE CASCADE,
@@ -15,10 +27,9 @@ async function ensureSchema() {
       valor      DECIMAL(10,2) NOT NULL DEFAULT 0,
       ativo      BOOLEAN DEFAULT true,
       created_at TIMESTAMPTZ DEFAULT NOW()
-    )`;
+    )`));
 
-  // Leads
-  await sql`
+  results.push(await runSafe('leads', () => sql`
     CREATE TABLE IF NOT EXISTS leads (
       id                SERIAL PRIMARY KEY,
       company_id        INT REFERENCES companies(id) ON DELETE CASCADE,
@@ -46,10 +57,9 @@ async function ensureSchema() {
       health_score      VARCHAR(10)  DEFAULT 'green',
       created_at        TIMESTAMPTZ  DEFAULT NOW(),
       updated_at        TIMESTAMPTZ  DEFAULT NOW()
-    )`;
+    )`));
 
-  // Activities/Timeline
-  await sql`
+  results.push(await runSafe('lead_activities', () => sql`
     CREATE TABLE IF NOT EXISTS lead_activities (
       id          SERIAL PRIMARY KEY,
       lead_id     INT REFERENCES leads(id) ON DELETE CASCADE,
@@ -59,10 +69,9 @@ async function ensureSchema() {
       descricao   TEXT NOT NULL,
       dados       JSONB,
       created_at  TIMESTAMPTZ DEFAULT NOW()
-    )`;
+    )`));
 
-  // Proposals
-  await sql`
+  results.push(await runSafe('lead_proposals', () => sql`
     CREATE TABLE IF NOT EXISTS lead_proposals (
       id          SERIAL PRIMARY KEY,
       lead_id     INT REFERENCES leads(id) ON DELETE CASCADE,
@@ -71,10 +80,9 @@ async function ensureSchema() {
       data_envio  DATE,
       obs         TEXT,
       created_at  TIMESTAMPTZ DEFAULT NOW()
-    )`;
+    )`));
 
-  // Onboarding checklist items
-  await sql`
+  results.push(await runSafe('onboarding_items', () => sql`
     CREATE TABLE IF NOT EXISTS onboarding_items (
       id           SERIAL PRIMARY KEY,
       lead_id      INT REFERENCES leads(id) ON DELETE CASCADE,
@@ -82,23 +90,13 @@ async function ensureSchema() {
       concluido    BOOLEAN DEFAULT false,
       concluido_at TIMESTAMPTZ,
       UNIQUE(lead_id, item)
-    )`;
+    )`));
 
-  // Sync meta (shared)
-  await sql`
-    CREATE TABLE IF NOT EXISTS sync_meta (
-      key        VARCHAR(100) PRIMARY KEY,
-      value      TEXT,
-      updated_at TIMESTAMPTZ DEFAULT NOW()
-    )`;
-
-
-  // WhatsApp conversation archives
-  await sql`
+  results.push(await runSafe('lead_whatsapp_chats', () => sql`
     CREATE TABLE IF NOT EXISTS lead_whatsapp_chats (
       id            SERIAL PRIMARY KEY,
-      lead_id       INT  NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
-      company_id    INT  NOT NULL,
+      lead_id       INT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+      company_id    INT NOT NULL,
       filename      VARCHAR(200),
       contact_name  VARCHAR(200),
       source        VARCHAR(50) DEFAULT 'whatsapp',
@@ -109,32 +107,41 @@ async function ensureSchema() {
       date_end      TIMESTAMPTZ,
       uploaded_by   INT,
       created_at    TIMESTAMPTZ DEFAULT NOW()
-    )`;
+    )`));
 
-  // Seed default plans if empty
-  await seedPlans();
+  results.push(await runSafe('sync_meta', () => sql`
+    CREATE TABLE IF NOT EXISTS sync_meta (
+      key        VARCHAR(100) PRIMARY KEY,
+      value      TEXT,
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`));
+
+  // Seed planos padrão
+  await runSafe('seed_plans', () => seedPlans());
+
+  const ok  = results.filter(r => r.ok).length;
+  const err = results.filter(r => !r.ok).length;
+  console.log(`[schema] ${ok} tabelas OK, ${err} erros`);
+  return results;
 }
 
 async function seedPlans() {
-  // Check if any company exists
   const cos = await sql`SELECT id FROM companies LIMIT 1`;
   if (!cos.length) return;
   const companyId = cos[0].id;
-
-  const existing = await sql`SELECT id FROM plans WHERE company_id = ${companyId} LIMIT 1`;
+  const existing  = await sql`SELECT id FROM plans WHERE company_id = ${companyId} LIMIT 1`;
   if (existing.length) return;
 
   const defaults = [
-    { crm:'esportes', nome:'Autônomo',   valor: 49.90 },
-    { crm:'esportes', nome:'Academia',   valor: 79.90 },
-    { crm:'spa',      nome:'Autônomo',   valor: 49.90 },
-    { crm:'spa',      nome:'Clínica',    valor: 79.90 },
-    { crm:'saude',    nome:'Autônomo',   valor: 49.90 },
-    { crm:'saude',    nome:'Clínica',    valor: 79.90 },
-    { crm:'pet',      nome:'Pet / Hotel',valor: 49.90 },
-    { crm:'pet',      nome:'Pet + Vet',  valor: 79.90 },
+    { crm:'esportes', nome:'Autônomo',    valor: 49.90 },
+    { crm:'esportes', nome:'Academia',    valor: 79.90 },
+    { crm:'spa',      nome:'Autônomo',    valor: 49.90 },
+    { crm:'spa',      nome:'Clínica',     valor: 79.90 },
+    { crm:'saude',    nome:'Autônomo',    valor: 49.90 },
+    { crm:'saude',    nome:'Clínica',     valor: 79.90 },
+    { crm:'pet',      nome:'Pet / Hotel', valor: 49.90 },
+    { crm:'pet',      nome:'Pet + Vet',   valor: 79.90 },
   ];
-
   for (const p of defaults) {
     await sql`
       INSERT INTO plans (company_id, crm, nome, valor)

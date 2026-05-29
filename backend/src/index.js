@@ -39,6 +39,17 @@ app.use('/api/plans',     planRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/sync',      syncRoutes);
 
+
+// ── Setup endpoint (força criação das tabelas) ────────────────────────────────
+app.get('/api/setup', async (_req, res) => {
+  try {
+    const results = await ensureSchema();
+    res.json({ ok: true, results });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ── Health ────────────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
 app.use((_req, res) => res.status(404).json({ error: 'Rota não encontrada.' }));
