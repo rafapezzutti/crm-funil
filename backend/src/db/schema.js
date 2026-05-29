@@ -1,7 +1,7 @@
 /**
  * CRM Pezzutti — Schema Auto-Setup
- * Cria todas as tabelas na inicialização se não existirem.
- * Cada tabela é criada de forma independente — se uma falhar, as outras continuam.
+ * Usa BIGINT para company_id (compatível com companies existente)
+ * Remove FK para companies (evita conflito de tipo) — integridade garantida pela aplicação
  */
 const { sql } = require('../config/db');
 
@@ -10,7 +10,7 @@ async function runSafe(name, fn) {
     await fn();
     return { ok: true, table: name };
   } catch (err) {
-    console.error(`[schema] Erro ao criar ${name}:`, err.message);
+    console.error(`[schema] ${name}:`, err.message);
     return { ok: false, table: name, error: err.message };
   }
 }
@@ -21,7 +21,7 @@ async function ensureSchema() {
   results.push(await runSafe('plans', () => sql`
     CREATE TABLE IF NOT EXISTS plans (
       id         SERIAL PRIMARY KEY,
-      company_id INT REFERENCES companies(id) ON DELETE CASCADE,
+      company_id BIGINT NOT NULL,
       crm        VARCHAR(50)   NOT NULL,
       nome       VARCHAR(100)  NOT NULL,
       valor      DECIMAL(10,2) NOT NULL DEFAULT 0,
@@ -32,7 +32,7 @@ async function ensureSchema() {
   results.push(await runSafe('leads', () => sql`
     CREATE TABLE IF NOT EXISTS leads (
       id                SERIAL PRIMARY KEY,
-      company_id        INT REFERENCES companies(id) ON DELETE CASCADE,
+      company_id        BIGINT NOT NULL,
       nome              VARCHAR(200) NOT NULL,
       empresa           VARCHAR(200),
       email             VARCHAR(200),
@@ -41,10 +41,10 @@ async function ensureSchema() {
       crm               VARCHAR(50),
       origem            VARCHAR(50),
       score             VARCHAR(20),
-      plano_id          INT REFERENCES plans(id),
+      plano_id          INT,
       valor_plano       DECIMAL(10,2),
       valor_negociado   DECIMAL(10,2),
-      responsavel_id    INT,
+      responsavel_id    BIGINT,
       data_fechamento   DATE,
       proxima_acao      VARCHAR(50),
       data_proxima_acao DATE,
@@ -62,8 +62,8 @@ async function ensureSchema() {
   results.push(await runSafe('lead_activities', () => sql`
     CREATE TABLE IF NOT EXISTS lead_activities (
       id          SERIAL PRIMARY KEY,
-      lead_id     INT REFERENCES leads(id) ON DELETE CASCADE,
-      user_id     INT,
+      lead_id     INT  NOT NULL,
+      user_id     BIGINT,
       user_name   VARCHAR(200),
       tipo        VARCHAR(50),
       descricao   TEXT NOT NULL,
@@ -74,7 +74,7 @@ async function ensureSchema() {
   results.push(await runSafe('lead_proposals', () => sql`
     CREATE TABLE IF NOT EXISTS lead_proposals (
       id          SERIAL PRIMARY KEY,
-      lead_id     INT REFERENCES leads(id) ON DELETE CASCADE,
+      lead_id     INT NOT NULL,
       versao      INT DEFAULT 1,
       valor       DECIMAL(10,2),
       data_envio  DATE,
@@ -85,7 +85,7 @@ async function ensureSchema() {
   results.push(await runSafe('onboarding_items', () => sql`
     CREATE TABLE IF NOT EXISTS onboarding_items (
       id           SERIAL PRIMARY KEY,
-      lead_id      INT REFERENCES leads(id) ON DELETE CASCADE,
+      lead_id      INT NOT NULL,
       item         VARCHAR(80) NOT NULL,
       concluido    BOOLEAN DEFAULT false,
       concluido_at TIMESTAMPTZ,
@@ -95,8 +95,8 @@ async function ensureSchema() {
   results.push(await runSafe('lead_whatsapp_chats', () => sql`
     CREATE TABLE IF NOT EXISTS lead_whatsapp_chats (
       id            SERIAL PRIMARY KEY,
-      lead_id       INT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
-      company_id    INT NOT NULL,
+      lead_id       INT NOT NULL,
+      company_id    BIGINT NOT NULL,
       filename      VARCHAR(200),
       contact_name  VARCHAR(200),
       source        VARCHAR(50) DEFAULT 'whatsapp',
@@ -105,7 +105,7 @@ async function ensureSchema() {
       message_count INT DEFAULT 0,
       date_start    TIMESTAMPTZ,
       date_end      TIMESTAMPTZ,
-      uploaded_by   INT,
+      uploaded_by   BIGINT,
       created_at    TIMESTAMPTZ DEFAULT NOW()
     )`));
 
@@ -116,12 +116,11 @@ async function ensureSchema() {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )`));
 
-  // Seed planos padrão
   await runSafe('seed_plans', () => seedPlans());
 
   const ok  = results.filter(r => r.ok).length;
   const err = results.filter(r => !r.ok).length;
-  console.log(`[schema] ${ok} tabelas OK, ${err} erros`);
+  console.log(`[schema] ${ok} OK, ${err} erros`);
   return results;
 }
 
