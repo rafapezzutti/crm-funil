@@ -11,6 +11,8 @@ const planRoutes      = require('./routes/plans');
 const dashboardRoutes = require('./routes/dashboard');
 const adminRoutes       = require('./routes/admin');
 const commissionRoutes  = require('./routes/commissions');
+const assessmentRoutes  = require('./routes/assessments');
+const whatsappRoutes    = require('./routes/whatsapp');
 
 const app = express();
 
@@ -42,6 +44,8 @@ app.use('/api/plans',     planRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/admin',       adminRoutes);
 app.use('/api/commissions', commissionRoutes);
+app.use('/api/assessments', assessmentRoutes);
+app.use('/api/whatsapp',    whatsappRoutes);
 
 
 // ── Setup endpoint (força criação das tabelas) ────────────────────────────────
@@ -69,13 +73,4 @@ app.listen(PORT, async () => {
   console.log(`🚀  API running on port ${PORT}`);
   try {
     await ensureSchema();
-    console.log('✅  Schema OK');
-  } catch (e) {
-    console.error('❌  Schema error:', e.message);
-  }
-  startSyncScheduler();
-});
-
-function startSyncScheduler() {
-  // Sync com CRMs externos desativado
-}
+  

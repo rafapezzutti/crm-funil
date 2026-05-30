@@ -7,8 +7,9 @@ import Funil      from './pages/Funil';
 import LeadDetail from './pages/LeadDetail';
 import Producao   from './pages/Producao';
 import Planos     from './pages/Planos';
-import Admin      from './pages/Admin';
-import Comissoes  from './pages/Comissoes';
+import Admin          from './pages/Admin';
+import Comissoes      from './pages/Comissoes';
+import FillAssessment from './pages/FillAssessment';
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -38,9 +39,4 @@ export default function App() {
           <Route path="/planos" element={<PrivateRoute><Shell><Planos /></Shell></PrivateRoute>} />
           <Route path="/admin" element={<PrivateRoute><Shell><Admin /></Shell></PrivateRoute>} />
           <Route path="/comissoes" element={<PrivateRoute><Shell><Comissoes /></Shell></PrivateRoute>} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </AuthProvider>
-    </BrowserRouter>
-  );
-}
+          <Route path="/avaliacao/:token" element={<FillAssessment />} />

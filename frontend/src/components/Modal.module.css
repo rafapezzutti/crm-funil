@@ -142,3 +142,24 @@ textarea:focus { border-color: var(--accent); }
   padding: 8px 16px;
   border-radius: 8px;
 }
+
+.cancelBtn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.cancelBtn:hover { background: var(--card); }
+
+.saveBtn {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  padding: 8px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.saveBtn:hover { opacity: .88; }
+.saveBtn:disabled { opacity: .5; cursor: not-allowed; }

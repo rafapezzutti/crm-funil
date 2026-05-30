@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import styles from './Modal.module.css';
-import ContractModal from './ContractModal';
+import ContractModal    from './ContractModal';
+import AssessmentModal  from './AssessmentModal';
 
 const STAGE_LABELS = { prosp:'Prospectado', neg:'Em Negociação', piloto:'Em Piloto', prod:'Em Produção' };
 
 export default function ClientDetail({ client: c, companySlug, onClose, onEdit, onDelete }) {
-  const [showContract, setShowContract] = useState(false);
+  const [showContract,   setShowContract]   = useState(false);
+  const [showAssessment, setShowAssessment] = useState(false);
 
   function Field({ label, value }) {
     if (!value) return null;
@@ -85,6 +87,13 @@ export default function ClientDetail({ client: c, companySlug, onClose, onEdit, 
             <div style={{ flex:1 }} />
             <button
               className={styles.cancelBtn}
+              onClick={function() { setShowAssessment(true); }}
+              style={{ display:'flex', alignItems:'center', gap:4 }}
+            >
+              📋 Fichas
+            </button>
+            <button
+              className={styles.cancelBtn}
               onClick={function() { setShowContract(true); }}
               style={{ display:'flex', alignItems:'center', gap:4 }}
             >
@@ -94,6 +103,13 @@ export default function ClientDetail({ client: c, companySlug, onClose, onEdit, 
           </div>
         </div>
       </div>
+
+      {showAssessment && (
+        <AssessmentModal
+          client={c}
+          onClose={function() { setShowAssessment(false); }}
+        />
+      )}
 
       {showContract && (
         <ContractModal
