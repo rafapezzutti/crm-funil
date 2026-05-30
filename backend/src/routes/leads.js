@@ -196,23 +196,24 @@ router.put('/:id/stage', auth, async (req, res) => {
     const updates = { stage, updated_at: 'NOW()' };
     if (motivo_perda) updates.motivo_perda = motivo_perda;
 
-    // Trial: define datas
-    let trialStart = null, trialEnd = null;
-    if (stage === 'piloto') {
-      const days = parseInt(trial_days || 10);
-      trialStart = new Date();
-      trialEnd   = new Date(Date.now() + days * 86400_000);
-    }
-
+    // Base update (stage + motivo)
     const [lead] = await sql`
       UPDATE leads SET
-        stage             = ${stage},
-        motivo_perda      = ${motivo_perda||null},
-        trial_start       = ${stage==='piloto' ? trialStart : sql`trial_start`},
-        trial_end         = ${stage==='piloto' ? trialEnd   : sql`trial_end`},
-        updated_at        = NOW()
+        stage        = ${stage},
+        motivo_perda = ${motivo_perda||null},
+        updated_at   = NOW()
       WHERE id = ${req.params.id} AND company_id = ${req.companyId}
       RETURNING *`;
+
+    // Trial: define datas separadamente para evitar nested sql`` no Neon
+    if (stage === 'piloto') {
+      const days      = parseInt(trial_days || 10);
+      const trialStart = new Date();
+      const trialEnd   = new Date(Date.now() + days * 86400_000);
+      await sql`
+        UPDATE leads SET trial_start = ${trialStart}, trial_end = ${trialEnd}
+        WHERE id = ${req.params.id}`;
+    }
 
     if (!lead) return res.status(404).json({ error: 'Lead não encontrado.' });
 
