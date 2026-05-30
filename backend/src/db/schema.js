@@ -127,6 +127,30 @@ async function ensureSchema(force = false) {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )`));
 
+
+  results.push(await runSafe('seller_profiles', () => sql`
+    CREATE TABLE IF NOT EXISTS seller_profiles (
+      id         SERIAL PRIMARY KEY,
+      user_id    UUID NOT NULL UNIQUE,
+      company_id UUID NOT NULL,
+      cpf        VARCHAR(20),
+      ativo      BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`));
+
+  results.push(await runSafe('commissions', () => sql`
+    CREATE TABLE IF NOT EXISTS commissions (
+      id               SERIAL PRIMARY KEY,
+      seller_id        UUID NOT NULL,
+      company_id       UUID NOT NULL,
+      mes_referencia   DATE NOT NULL,
+      percentual       DECIMAL(5,2) DEFAULT 0,
+      valor_calculado  DECIMAL(10,2) DEFAULT 0,
+      obs              TEXT,
+      created_at       TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(seller_id, mes_referencia)
+    )`));
+
   await runSafe('seed_plans', () => seedPlans());
 
   const ok  = results.filter(r => r.ok).length;

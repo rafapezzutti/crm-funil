@@ -165,4 +165,83 @@ router.get('/mrr', auth, async (req, res) => {
   }
 });
 
+// ── GET /api/dashboard/activity ───────────────────────────────────────────────
+// Atividade dos leads nos últimos 30 dias
+router.get('/activity', auth, async (req, res) => {
+  try {
+    const cid = req.companyId;
+
+    // Atividades por dia (últimos 30 dias)
+    const byDay = await sql`
+      SELECT DATE(la.created_at) AS dia, COUNT(*) AS total,
+             COUNT(*) FILTER (WHERE la.tipo = 'mudanca_etapa') AS mudancas,
+             COUNT(*) FILTER (WHERE la.tipo IN ('ligacao','whatsapp','demo')) AS contatos
+      FROM   lead_activities la
+      JOIN   leads l ON l.id = la.lead_id
+      WHERE  l.company_id = ${cid}
+        AND  la.created_at >= NOW() - INTERVAL '30 days'
+      GROUP  BY 1 ORDER BY 1`;
+
+    // Leads criados nos últimos 30 dias
+    const novosLeads = await sql`
+      SELECT DATE(created_at) AS dia, COUNT(*) AS total, crm
+      FROM   leads
+      WHERE  company_id = ${cid}
+        AND  created_at >= NOW() - INTERVAL '30 days'
+      GROUP  BY 1, 3 ORDER BY 1`;
+
+    // Conversões por etapa (30 dias)
+    const conversoes = await sql`
+      SELECT dados->>'stage_novo' AS para, COUNT(*) AS total
+      FROM   lead_activities la
+      JOIN   leads l ON l.id = la.lead_id
+      WHERE  l.company_id = ${cid}
+        AND  la.tipo = 'mudanca_etapa'
+        AND  la.created_at >= NOW() - INTERVAL '30 days'
+      GROUP  BY 1`;
+
+    // Top leads mais ativos
+    const topLeads = await sql`
+      SELECT l.id, l.nome, l.empresa, l.crm, l.stage,
+             COUNT(la.id) AS atividades
+      FROM   lead_activities la
+      JOIN   leads l ON l.id = la.lead_id
+      WHERE  l.company_id = ${cid}
+        AND  la.created_at >= NOW() - INTERVAL '30 days'
+      GROUP  BY l.id, l.nome, l.empresa, l.crm, l.stage
+      ORDER  BY atividades DESC LIMIT 10`;
+
+    res.json({ byDay, novosLeads, conversoes, topLeads });
+  } catch (err) {
+    console.error('[dashboard/activity]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/dashboard/sellers ────────────────────────────────────────────────
+// Performance por vendedor
+router.get('/sellers', auth, async (req, res) => {
+  try {
+    const cid = req.companyId;
+    const rows = await sql`
+      SELECT u.id, u.name,
+             COUNT(DISTINCT l.id) FILTER (WHERE l.stage NOT IN ('perdido','cancelado')) AS leads_ativos,
+             COUNT(DISTINCT l.id) FILTER (WHERE l.stage = 'producao')                  AS em_producao,
+             COUNT(DISTINCT l.id) FILTER (WHERE l.stage = 'piloto')                    AS em_piloto,
+             COUNT(DISTINCT l.id) FILTER (WHERE l.stage IN ('perdido','cancelado'))    AS perdidos,
+             COALESCE(SUM(COALESCE(l.valor_negociado, l.valor_plano, 0))
+               FILTER (WHERE l.stage = 'producao'), 0) AS mrr
+      FROM   seller_profiles sp
+      JOIN   users u ON u.id = sp.user_id
+      LEFT JOIN leads l ON l.responsavel_id = sp.user_id AND l.company_id = ${cid}
+      WHERE  sp.company_id = ${cid} AND sp.ativo = true
+      GROUP  BY u.id, u.name
+      ORDER  BY em_producao DESC, mrr DESC`;
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 module.exports = router;

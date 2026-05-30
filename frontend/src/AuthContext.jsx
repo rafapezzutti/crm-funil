@@ -5,6 +5,17 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser]         = useState(null);
+
+  function getRoleFromToken() {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return null;
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return payload.role || null;
+    } catch { return null; }
+  }
+
+  const role = getRoleFromToken();
   const [company, setCompany]   = useState(null);
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading]   = useState(true);
@@ -59,7 +70,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, company, companies, loading, login, logout, switchCompany }}>
+    <AuthContext.Provider value={{ user, company, companies, loading, login, logout, switchCompany, role }}>
       {children}
     </AuthContext.Provider>
   );

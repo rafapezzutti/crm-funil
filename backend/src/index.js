@@ -9,7 +9,8 @@ const authRoutes      = require('./routes/auth');
 const leadRoutes      = require('./routes/leads');
 const planRoutes      = require('./routes/plans');
 const dashboardRoutes = require('./routes/dashboard');
-const { router: syncRoutes, runAllSyncs } = require('./routes/sync');
+const adminRoutes       = require('./routes/admin');
+const commissionRoutes  = require('./routes/commissions');
 
 const app = express();
 
@@ -39,7 +40,8 @@ app.use('/api/auth',      authLimiter, authRoutes);
 app.use('/api/leads',     leadRoutes);
 app.use('/api/plans',     planRoutes);
 app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/sync',      syncRoutes);
+app.use('/api/admin',       adminRoutes);
+app.use('/api/commissions', commissionRoutes);
 
 
 // ── Setup endpoint (força criação das tabelas) ────────────────────────────────
@@ -75,29 +77,5 @@ app.listen(PORT, async () => {
 });
 
 function startSyncScheduler() {
-  const hasAnySrc = process.env.DATABASE_URL_ESPORTES
-                 || process.env.DATABASE_URL_SPAS
-                 || process.env.DATABASE_URL_SAUDE;
-  if (!hasAnySrc) {
-    console.log('ℹ  Sync desativado (sem fontes configuradas).');
-    return;
-  }
-  const INTERVAL_MS = parseInt(process.env.SYNC_INTERVAL_HOURS || '6') * 3600000;
-  console.log(`🔄  Sync agendado a cada ${INTERVAL_MS/3600000}h`);
-  setTimeout(async () => {
-    const [co] = await require('./config/db').sql`SELECT id FROM companies LIMIT 1`;
-    if (!co) return;
-    const results = await runAllSyncs(co.id);
-    const total   = results.reduce((s, r) => s + (r.imported || 0), 0);
-    console.log(`✅  Sync inicial: ${total} novos registros`);
-  }, 10_000);
-  setInterval(async () => {
-    try {
-      const [co] = await require('./config/db').sql`SELECT id FROM companies LIMIT 1`;
-      if (!co) return;
-      const results = await runAllSyncs(co.id);
-      const total   = results.reduce((s, r) => s + (r.imported || 0), 0);
-      if (total > 0) console.log(`✅  Sync: ${total} novos`);
-    } catch (e) { console.error('❌  Sync error:', e.message); }
-  }, INTERVAL_MS);
+  // Sync com CRMs externos desativado
 }

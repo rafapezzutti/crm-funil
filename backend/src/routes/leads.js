@@ -67,6 +67,7 @@ router.get('/', auth, async (req, res) => {
         AND  (${crm||null}::text   IS NULL OR l.crm   = ${crm||null})
         AND  (${score||null}::text IS NULL OR l.score  = ${score||null})
         AND  (${q||null}::text     IS NULL OR l.nome ILIKE ${'%'+(q||'')+'%'} OR l.empresa ILIKE ${'%'+(q||'')+'%'})
+        AND  (${req.role !== 'vendedor' ? null : req.userId}::uuid IS NULL OR l.responsavel_id = ${req.role !== 'vendedor' ? null : req.userId}::uuid)
       ORDER  BY l.updated_at DESC`;
     res.json(leads);
   } catch (err) {
@@ -99,6 +100,12 @@ router.post('/', auth, async (req, res) => {
         ${proxima_acao||null}, ${data_proxima_acao||null},
         ${stage||'prospeccao'}
       ) RETURNING *`;
+
+    // Vendedor: auto-associar como responsável
+    if (req.role === 'vendedor' && !lead.responsavel_id) {
+      await sql`UPDATE leads SET responsavel_id = ${req.userId}::uuid WHERE id = ${lead.id}`;
+      lead.responsavel_id = req.userId;
+    }
 
     // Registro na timeline
     const [u] = await sql`SELECT name FROM users WHERE id = ${req.userId}`;

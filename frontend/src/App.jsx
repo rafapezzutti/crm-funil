@@ -7,10 +7,10 @@ import Funil      from './pages/Funil';
 import LeadDetail from './pages/LeadDetail';
 import Producao   from './pages/Producao';
 import Planos     from './pages/Planos';
-import Sync       from './pages/Sync';
+import Admin      from './pages/Admin';
+import Comissoes  from './pages/Comissoes';
 
 function PrivateRoute({ children }) {
-  
   const { user, loading } = useAuth();
   if (loading) return null;
   return user ? children : <Navigate to="/login" replace />;
@@ -20,9 +20,7 @@ function Shell({ children }) {
   return (
     <div className="app-shell">
       <Sidebar />
-      <div className="main-content">
-        {children}
-      </div>
+      <div className="main-content">{children}</div>
     </div>
   );
 }
@@ -33,24 +31,13 @@ export default function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/" element={
-            <PrivateRoute><Shell><Dashboard /></Shell></PrivateRoute>
-          } />
-          <Route path="/funil" element={
-            <PrivateRoute><Shell><Funil /></Shell></PrivateRoute>
-          } />
-          <Route path="/leads/:id" element={
-            <PrivateRoute><Shell><LeadDetail /></Shell></PrivateRoute>
-          } />
-          <Route path="/producao" element={
-            <PrivateRoute><Shell><Producao /></Shell></PrivateRoute>
-          } />
-          <Route path="/planos" element={
-            <PrivateRoute><Shell><Planos /></Shell></PrivateRoute>
-          } />
-          <Route path="/sync" element={
-            <PrivateRoute><Shell><Sync /></Shell></PrivateRoute>
-          } />
+          <Route path="/" element={<PrivateRoute><Shell><Dashboard /></Shell></PrivateRoute>} />
+          <Route path="/funil" element={<PrivateRoute><Shell><Funil /></Shell></PrivateRoute>} />
+          <Route path="/leads/:id" element={<PrivateRoute><Shell><LeadDetail /></Shell></PrivateRoute>} />
+          <Route path="/producao" element={<PrivateRoute><Shell><Producao /></Shell></PrivateRoute>} />
+          <Route path="/planos" element={<PrivateRoute><Shell><Planos /></Shell></PrivateRoute>} />
+          <Route path="/admin" element={<PrivateRoute><Shell><Admin /></Shell></PrivateRoute>} />
+          <Route path="/comissoes" element={<PrivateRoute><Shell><Comissoes /></Shell></PrivateRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>
