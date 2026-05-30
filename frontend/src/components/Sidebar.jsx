@@ -19,9 +19,14 @@ export default function Sidebar() {
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-logo">
-        <h1>P. Funil</h1>
-        <span>Gestão Comercial</span>
+      <div className="sidebar-logo" style={{ display:'flex', alignItems:'center', gap:10 }}>
+        <img src="/logo-p.png" alt="P. Soluções"
+          style={{ height:36, width:36, objectFit:'contain', flexShrink:0 }}
+          onError={e => { e.target.src='/logo-icon.svg'; }} />
+        <div>
+          <h1>P. Funil</h1>
+          <span>Gestão Comercial</span>
+        </div>
       </div>
 
       <nav className="sidebar-nav">

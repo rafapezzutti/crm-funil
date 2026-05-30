@@ -30,7 +30,11 @@ export default function Login() {
   return (
     <div className={styles.page}>
       <form className={styles.card} onSubmit={handleSubmit}>
-        <h1 className={styles.logo}>P. Funil</h1>
+        <div style={{ textAlign:'center', marginBottom:8 }}>
+          <img src="/logo-p.png" alt="P. Soluções"
+            style={{ height:72, objectFit:'contain' }}
+            onError={e => { e.target.src='/logo-icon.svg'; }} />
+        </div>
         <h2 className={styles.title}>Entrar</h2>
         {error && <p className={styles.error}>{error}</p>}
         <label className={styles.label}>E-mail
