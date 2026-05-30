@@ -20,7 +20,7 @@ export default function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
-        <h1>CRM Pezzutti</h1>
+        <h1>P. Funil</h1>
         <span>Gestão Comercial</span>
       </div>
 

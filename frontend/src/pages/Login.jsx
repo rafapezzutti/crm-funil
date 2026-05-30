@@ -30,7 +30,7 @@ export default function Login() {
   return (
     <div className={styles.page}>
       <form className={styles.card} onSubmit={handleSubmit}>
-        <h1 className={styles.logo}>CRM Funil</h1>
+        <h1 className={styles.logo}>P. Funil</h1>
         <h2 className={styles.title}>Entrar</h2>
         {error && <p className={styles.error}>{error}</p>}
         <label className={styles.label}>E-mail
@@ -44,10 +44,11 @@ export default function Login() {
         </button>
         <p className={styles.links}>
           <Link to="/forgot-password">Esqueceu a senha?</Link>
-          {' · '}
-          <Link to="/register">Criar conta</Link>
         </p>
       </form>
+      <p style={{ marginTop: 24, fontSize: 12, color: '#555', textAlign: 'center' }}>
+        Powered by P. Soluções
+      </p>
     </div>
   );
 }
