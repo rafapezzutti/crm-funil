@@ -1,12 +1,12 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './AuthContext';
 import Sidebar from './components/Sidebar';
-import Login      from './pages/Login';
-import Dashboard  from './pages/Dashboard';
-import Funil      from './pages/Funil';
-import LeadDetail from './pages/LeadDetail';
-import Producao   from './pages/Producao';
-import Planos     from './pages/Planos';
+import Login          from './pages/Login';
+import Dashboard      from './pages/Dashboard';
+import Funil          from './pages/Funil';
+import LeadDetail     from './pages/LeadDetail';
+import Producao       from './pages/Producao';
+import Planos         from './pages/Planos';
 import Admin          from './pages/Admin';
 import Comissoes      from './pages/Comissoes';
 import FillAssessment from './pages/FillAssessment';
@@ -40,3 +40,9 @@ export default function App() {
           <Route path="/admin" element={<PrivateRoute><Shell><Admin /></Shell></PrivateRoute>} />
           <Route path="/comissoes" element={<PrivateRoute><Shell><Comissoes /></Shell></PrivateRoute>} />
           <Route path="/avaliacao/:token" element={<FillAssessment />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </AuthProvider>
+    </BrowserRouter>
+  );
+}

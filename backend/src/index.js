@@ -5,14 +5,14 @@ const helmet    = require('helmet');
 const rateLimit = require('express-rate-limit');
 
 const { ensureSchema } = require('./db/schema');
-const authRoutes      = require('./routes/auth');
-const leadRoutes      = require('./routes/leads');
-const planRoutes      = require('./routes/plans');
-const dashboardRoutes = require('./routes/dashboard');
-const adminRoutes       = require('./routes/admin');
-const commissionRoutes  = require('./routes/commissions');
-const assessmentRoutes  = require('./routes/assessments');
-const whatsappRoutes    = require('./routes/whatsapp');
+const authRoutes       = require('./routes/auth');
+const leadRoutes       = require('./routes/leads');
+const planRoutes       = require('./routes/plans');
+const dashboardRoutes  = require('./routes/dashboard');
+const adminRoutes      = require('./routes/admin');
+const commissionRoutes = require('./routes/commissions');
+const assessmentRoutes = require('./routes/assessments');
+const whatsappRoutes   = require('./routes/whatsapp');
 
 const app = express();
 
@@ -38,15 +38,14 @@ const authLimiter = rateLimit({ windowMs: 15*60*1000, max: 20,
   message: { error: 'Muitas tentativas. Tente novamente em 15 minutos.' } });
 
 // ── Rotas ─────────────────────────────────────────────────────────────────────
-app.use('/api/auth',      authLimiter, authRoutes);
-app.use('/api/leads',     leadRoutes);
-app.use('/api/plans',     planRoutes);
-app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/auth',        authLimiter, authRoutes);
+app.use('/api/leads',       leadRoutes);
+app.use('/api/plans',       planRoutes);
+app.use('/api/dashboard',   dashboardRoutes);
 app.use('/api/admin',       adminRoutes);
 app.use('/api/commissions', commissionRoutes);
 app.use('/api/assessments', assessmentRoutes);
 app.use('/api/whatsapp',    whatsappRoutes);
-
 
 // ── Setup endpoint (força criação das tabelas) ────────────────────────────────
 app.get('/api/setup', async (req, res) => {
@@ -73,4 +72,13 @@ app.listen(PORT, async () => {
   console.log(`🚀  API running on port ${PORT}`);
   try {
     await ensureSchema();
-  
+    console.log('✅  Schema OK');
+  } catch (e) {
+    console.error('❌  Schema error:', e.message);
+  }
+  startSyncScheduler();
+});
+
+function startSyncScheduler() {
+  // Sync com CRMs externos desativado
+}
