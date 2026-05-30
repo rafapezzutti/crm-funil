@@ -30,10 +30,17 @@ export default function Login() {
   return (
     <div className={styles.page}>
       <form className={styles.card} onSubmit={handleSubmit}>
-        <div style={{ textAlign:'center', marginBottom:8 }}>
+        {/* Logo P. Soluções */}
+        <div style={{ textAlign:'center', marginBottom:4 }}>
           <img src="/logo-p.png" alt="P. Soluções"
-            style={{ height:72, objectFit:'contain' }}
-            onError={e => { e.target.src='/logo-icon.svg'; }} />
+            style={{ height:64, objectFit:'contain' }}
+            onError={e => { e.target.style.display='none'; }} />
+        </div>
+        {/* Nome do produto */}
+        <div style={{ textAlign:'center', marginBottom:4 }}>
+          <span style={{ fontSize:22, fontWeight:700, color:'var(--accent)', letterSpacing:'-0.5px' }}>
+            P. Funil
+          </span>
         </div>
         <h2 className={styles.title}>Entrar</h2>
         {error && <p className={styles.error}>{error}</p>}
