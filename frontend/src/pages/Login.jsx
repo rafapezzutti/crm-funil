@@ -45,10 +45,10 @@ export default function Login() {
         <p className={styles.links}>
           <Link to="/forgot-password">Esqueceu a senha?</Link>
         </p>
+        <p style={{ marginTop: 16, fontSize: 11, color: '#666', textAlign: 'center' }}>
+          Powered by P. Soluções
+        </p>
       </form>
-      <p style={{ marginTop: 24, fontSize: 12, color: '#555', textAlign: 'center' }}>
-        Powered by P. Soluções
-      </p>
     </div>
   );
 }
