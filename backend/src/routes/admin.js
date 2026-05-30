@@ -113,4 +113,21 @@ router.delete('/sellers/:id', auth, adminOnly, async (req, res) => {
   }
 });
 
+
+// ── GET /api/admin/team ───────────────────────────────────────────────────────
+// Retorna todos os membros da empresa (para dropdown de responsável)
+router.get('/team', auth, async (req, res) => {
+  try {
+    const members = await sql`
+      SELECT u.id, u.name, u.email, cm.role
+      FROM   company_members cm
+      JOIN   users u ON u.id = cm.user_id
+      WHERE  cm.company_id = ${req.companyId}
+      ORDER  BY cm.role DESC, u.name`;
+    res.json(members);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

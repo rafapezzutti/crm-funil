@@ -393,4 +393,22 @@ router.delete('/:id/whatsapp/:chatId', auth, async (req, res) => {
 });
 
 
+
+// ── POST /api/leads/assign-me ─────────────────────────────────────────────────
+// Atribui ao usuário atual todos os leads da empresa sem responsável
+router.post('/assign-me', auth, async (req, res) => {
+  try {
+    const result = await sql`
+      UPDATE leads
+      SET    responsavel_id = ${req.userId}::uuid,
+             updated_at     = NOW()
+      WHERE  company_id     = ${req.companyId}
+        AND  responsavel_id IS NULL
+      RETURNING id`;
+    res.json({ ok: true, updated: result.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

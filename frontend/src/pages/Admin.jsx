@@ -15,6 +15,19 @@ export default function Admin() {
   const [saving,  setSaving]    = useState(false);
   const [err,     setErr]       = useState('');
   const [msg,     setMsg]       = useState('');
+  const [assigning, setAssigning] = useState(false);
+
+  async function assignLeadsToMe() {
+    if (!confirm('Atribuir todos os leads SEM responsável para você?')) return;
+    setAssigning(true);
+    try {
+      const { data } = await api.post('/leads/assign-me');
+      setMsg(`✅ ${data.updated} lead(s) atribuído(s) a você com sucesso!`);
+      setTimeout(() => setMsg(''), 5000);
+    } catch(e) {
+      setErr(e.response?.data?.error || 'Erro ao atribuir.');
+    } finally { setAssigning(false); }
+  }
 
   useEffect(() => { load(); }, []);
 
@@ -58,9 +71,14 @@ export default function Admin() {
           <h1>👥 Vendedores</h1>
           <span className="text-muted" style={{fontSize:13}}>Gerenciamento de equipe comercial</span>
         </div>
-        <button className="btn btn-primary" onClick={() => { setErr(''); setModal(true); }}>
-          ＋ Novo Vendedor
-        </button>
+        <div style={{display:'flex',gap:8}}>
+          <button className="btn btn-ghost" onClick={assignLeadsToMe} disabled={assigning}>
+            {assigning ? '⏳…' : '🔗 Atribuir leads sem dono para mim'}
+          </button>
+          <button className="btn btn-primary" onClick={() => { setErr(''); setModal(true); }}>
+            ＋ Novo Vendedor
+          </button>
+        </div>
       </div>
 
       {msg && <div className="alert alert-low" style={{marginBottom:16}}>✅ {msg}</div>}
