@@ -5,7 +5,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
-const API = (import.meta.env.VITE_API_URL || 'https://crm-funil-api.onrender.com') + '/api';
+const API = (import.meta.env.VITE_API_URL || 'https://api.pfunil.ia.br') + '/api';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 function Radio({ name, value, label, checked, onChange }) {
