@@ -47,4 +47,16 @@ export default function Login() {
         <label className={styles.label}>E-mail
           <input type="email" value={email} onChange={e => setEmail(e.target.value)} required autoFocus />
         </label>
-        <label className={styles.labe
+        <label className={styles.label}>Senha
+          <input type="password" value={password} onChange={e => setPassword(e.target.value)} required />
+        </label>
+        <button type="submit" className={styles.button} disabled={loading}>
+          {loading ? 'Entrando...' : 'Entrar'}
+        </button>
+        <div style={{ textAlign:'center', marginTop:12, fontSize:13 }}>
+          <Link to="/forgot-password" style={{ color:'var(--accent)' }}>Esqueci minha senha</Link>
+        </div>
+      </form>
+    </div>
+  );
+}
