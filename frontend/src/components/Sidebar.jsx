@@ -1,13 +1,20 @@
+import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 
-const ALL_ITEMS = [
-  { icon:'📊', label:'Dashboard',   path:'/',            roles:['admin','master','vendedor'] },
-  { icon:'🎯', label:'Funil',       path:'/funil',       roles:['admin','master','vendedor'] },
-  { icon:'🏭', label:'Produção',    path:'/producao',    roles:['admin','master'] },
-  { icon:'💰', label:'Planos',      path:'/planos',      roles:['admin','master'] },
-  { icon:'💵', label:'Comissões',   path:'/comissoes',   roles:['admin','master'] },
-  { icon:'👥', label:'Vendedores',  path:'/admin',       roles:['admin','master'] },
+const GROUPS = [
+  { label:'Principal', items:[
+    { icon:'📊', label:'Dashboard', path:'/',      roles:['admin','master','vendedor'] },
+    { icon:'🎯', label:'Funil',     path:'/funil', roles:['admin','master','vendedor'] },
+  ]},
+  { label:'Gestão', items:[
+    { icon:'🏭', label:'Produção',  path:'/producao',  roles:['admin','master'] },
+    { icon:'💰', label:'Planos',    path:'/planos',    roles:['admin','master'] },
+    { icon:'💵', label:'Comissões', path:'/comissoes', roles:['admin','master'] },
+  ]},
+  { label:'Administração', items:[
+    { icon:'👥', label:'Vendedores', path:'/admin', roles:['admin','master'] },
+  ]},
 ];
 
 export default function Sidebar() {
@@ -15,12 +22,18 @@ export default function Sidebar() {
   const { pathname }   = useLocation();
   const { user, logout, role } = useAuth();
 
-  const items = ALL_ITEMS.filter(i => !i.roles || i.roles.includes(role) || i.roles.includes('vendedor'));
+  const [open, setOpen] = useState({});
+  const isOpen = (l) => open[l] === true; // recolhido por padrão
+  const toggle = (l) => setOpen(p => ({ ...p, [l]: !p[l] }));
+
+  const groups = GROUPS
+    .map(g => ({ ...g, items: g.items.filter(i => !i.roles || i.roles.includes(role)) }))
+    .filter(g => g.items.length);
 
   return (
     <aside className="sidebar">
       <div className="sidebar-logo" style={{ display:'flex', alignItems:'center', gap:10 }}>
-        <img src="/logo-p.png" alt="P. Soluções"
+        <img src="/logo-p.PNG" alt="P. Soluções"
           style={{ height:36, width:36, objectFit:'contain', flexShrink:0 }}
           onError={e => { e.target.src='/logo-icon.svg'; }} />
         <div>
@@ -30,16 +43,27 @@ export default function Sidebar() {
       </div>
 
       <nav className="sidebar-nav">
-        <div className="nav-section">Menu</div>
-        {items.map(item => (
-          <button
-            key={item.path}
-            className={`nav-item ${pathname === item.path ? 'active' : ''}`}
-            onClick={() => nav(item.path)}
-          >
-            <span>{item.icon}</span>
-            <span>{item.label}</span>
-          </button>
+        {groups.map(g => (
+          <div key={g.label}>
+            <button
+              className="nav-section"
+              onClick={() => toggle(g.label)}
+              style={{ display:'flex', alignItems:'center', justifyContent:'space-between', width:'100%', background:'none', border:'none', cursor:'pointer' }}
+            >
+              <span>{g.label}</span>
+              <span style={{ fontSize:9, opacity:.6 }}>{isOpen(g.label) ? '▾' : '▸'}</span>
+            </button>
+            {isOpen(g.label) && g.items.map(item => (
+              <button
+                key={item.path}
+                className={`nav-item ${pathname === item.path ? 'active' : ''}`}
+                onClick={() => nav(item.path)}
+              >
+                <span>{item.icon}</span>
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </div>
         ))}
         {role === 'vendedor' && (
           <div style={{

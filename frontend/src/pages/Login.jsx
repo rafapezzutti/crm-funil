@@ -32,7 +32,7 @@ export default function Login() {
       <form className={styles.card} onSubmit={handleSubmit}>
         {/* Logo P. Soluções */}
         <div style={{ textAlign:'center', marginBottom:4 }}>
-          <img src="/logo-p.png" alt="P. Soluções"
+          <img src="/logo-p.PNG" alt="P. Soluções"
             style={{ height:64, objectFit:'contain' }}
             onError={e => { e.target.style.display='none'; }} />
         </div>
@@ -47,19 +47,4 @@ export default function Login() {
         <label className={styles.label}>E-mail
           <input type="email" value={email} onChange={e => setEmail(e.target.value)} required autoFocus />
         </label>
-        <label className={styles.label}>Senha
-          <input type="password" value={password} onChange={e => setPassword(e.target.value)} required />
-        </label>
-        <button type="submit" className={styles.btn} disabled={loading}>
-          {loading ? 'Entrando…' : 'Entrar'}
-        </button>
-        <p className={styles.links}>
-          <Link to="/forgot-password">Esqueceu a senha?</Link>
-        </p>
-        <p style={{ marginTop: 16, fontSize: 11, color: '#666', textAlign: 'center' }}>
-          Powered by P. Soluções
-        </p>
-      </form>
-    </div>
-  );
-}
+        <label className={styles.labe
