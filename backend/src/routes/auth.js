@@ -7,6 +7,13 @@ const { Resend } = require('resend');
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+// Tabela de eventos de login (painel de atividade no Master) — autocria
+sql`CREATE TABLE IF NOT EXISTS login_events (
+  id BIGSERIAL PRIMARY KEY, user_id INTEGER, user_name TEXT, user_role TEXT, ip TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+)`.catch(() => {});
+sql`CREATE INDEX IF NOT EXISTS idx_login_events_created ON login_events(created_at DESC)`.catch(() => {});
+
 // Helpers
 function makeSlug(name) {
   return name.toLowerCase()
@@ -96,6 +103,9 @@ router.post('/login', async (req, res) => {
     if (!membership) membership = memberships[0];
 
     const token = signToken(user.id, membership.company_id, membership.role);
+    const _ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip;
+    sql`INSERT INTO login_events (user_id, user_name, user_role, ip)
+        VALUES (${user.id}, ${user.name}, ${membership.role}, ${_ip})`.catch(() => {});
     res.json({
       token,
       user: { id: user.id, name: user.name, email: user.email },
