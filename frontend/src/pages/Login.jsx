@@ -30,16 +30,16 @@ export default function Login() {
   return (
     <div className={styles.page}>
       <form className={styles.card} onSubmit={handleSubmit}>
-        {/* Logo P. Soluções */}
-        <div style={{ textAlign:'center', marginBottom:4 }}>
-          <img src="/logo-icon.svg" alt="P. Soluções"
-            style={{ height:64, width:64, objectFit:'contain' }} />
-        </div>
-        {/* Nome do produto */}
-        <div style={{ textAlign:'center', marginBottom:4 }}>
-          <span style={{ fontSize:22, fontWeight:700, color:'var(--accent)', letterSpacing:'-0.5px' }}>
-            P. Funil
+        {/* Logo */}
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:12, marginBottom:6 }}>
+          <img src="/logo-icon.svg" alt="P"
+            style={{ height:60, width:60, objectFit:'contain', flexShrink:0 }} />
+          <span style={{ fontSize:44, fontWeight:300, color:'#00d8e8', letterSpacing:'-1px', lineHeight:1 }}>
+            Funil
           </span>
+        </div>
+        <div style={{ textAlign:'center', fontSize:11, color:'var(--muted)', letterSpacing:'1.5px', textTransform:'uppercase', marginBottom:20 }}>
+          CRM — Gestão Comercial
         </div>
         <h2 className={styles.title}>Entrar</h2>
         {error && <p className={styles.error}>{error}</p>}
