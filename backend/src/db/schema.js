@@ -161,6 +161,18 @@ async function ensureSchema(force = false) {
 
   await runSafe('seed_plans', () => seedPlans());
 
+  // Atribuir leads sem dono ao admin da empresa
+  await runSafe('assign_orphan_leads', () => sql`
+    UPDATE leads l
+    SET responsavel_id = (
+      SELECT cm.user_id
+      FROM company_members cm
+      WHERE cm.company_id = l.company_id AND cm.role = 'admin'
+      LIMIT 1
+    )
+    WHERE l.responsavel_id IS NULL
+  `);
+
   const ok  = results.filter(r => r.ok).length;
   const err = results.filter(r => !r.ok).length;
   console.log(`[schema] ${ok} OK, ${err} erros`);

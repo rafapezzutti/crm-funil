@@ -161,6 +161,13 @@ router.post('/prospecting-sync', async (req, res) => {
       return res.json({ ok: true, criados: 0, atualizados: 0, ignorados: 0, promovidos: 0 });
     }
 
+    // Admin da empresa — responsável padrão para leads sem dono
+    const [adminMember] = await sql`
+      SELECT user_id FROM company_members
+      WHERE company_id = ${companyId}::uuid AND role = 'admin'
+      LIMIT 1`;
+    const adminId = adminMember?.user_id || null;
+
     const SCORE_MAP  = { quente: 'quente', morno: 'morno', muito_quente: 'muito_quente' };
     const SCORE_RANK = { morno: 1, quente: 2, muito_quente: 3 };
 
@@ -260,14 +267,14 @@ router.post('/prospecting-sync', async (req, res) => {
         const [lead] = await sql`
           INSERT INTO leads
             (company_id, nome, empresa, telefone, crm, score, stage, origem, obs,
-             ultimo_whatsapp_at, prosp_quente_count)
+             responsavel_id, ultimo_whatsapp_at, prosp_quente_count)
           VALUES (
             ${companyId}::uuid,
             ${p.nome || 'Contato WhatsApp'},
             ${p.empresa || null},
             ${p.telefone || p.whatsapp || null},
             ${crm}, ${score}, 'prospeccao', 'prospeccao_ativa', ${obs},
-            NOW(), ${count}
+            ${adminId}, NOW(), ${count}
           ) RETURNING id`;
 
         await sql`
