@@ -32,9 +32,8 @@ export default function Login() {
       <form className={styles.card} onSubmit={handleSubmit}>
         {/* Logo P. Soluções */}
         <div style={{ textAlign:'center', marginBottom:4 }}>
-          <img src="/logo-psolucoes.svg" alt="P. Soluções"
-            style={{ height:64, objectFit:'contain' }}
-            onError={e => { e.target.style.display='none'; }} />
+          <img src="/logo-icon.svg" alt="P. Soluções"
+            style={{ height:64, width:64, objectFit:'contain' }} />
         </div>
         {/* Nome do produto */}
         <div style={{ textAlign:'center', marginBottom:4 }}>
