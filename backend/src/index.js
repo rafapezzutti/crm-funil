@@ -20,6 +20,15 @@ app.set('trust proxy', 1);
 
 app.use(helmet());
 
+// Bypass CORS para o endpoint de sync de prospecção (token-protected, não precisa de CORS restrito)
+app.use('/api/leads/prospecting-sync', (req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
 const allowedOrigins = [process.env.FRONTEND_URL || 'http://localhost:5173'];
 app.use(cors({
   origin: (origin, cb) => {
