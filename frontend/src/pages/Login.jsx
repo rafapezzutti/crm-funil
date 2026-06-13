@@ -31,12 +31,9 @@ export default function Login() {
     <div className={styles.page}>
       <form className={styles.card} onSubmit={handleSubmit}>
         {/* Logo */}
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:12, marginBottom:6 }}>
-          <img src="/logo-icon.svg" alt="P"
-            style={{ height:60, width:60, objectFit:'contain', flexShrink:0 }} />
-          <span style={{ fontSize:44, fontWeight:300, color:'#00d8e8', letterSpacing:'-1px', lineHeight:1 }}>
-            Funil
-          </span>
+        <div style={{ textAlign:'center', marginBottom:4 }}>
+          <img src="/logo-pfunil.svg" alt="P. Funil"
+            style={{ height:60, objectFit:'contain' }} />
         </div>
         <div style={{ textAlign:'center', fontSize:11, color:'var(--muted)', letterSpacing:'1.5px', textTransform:'uppercase', marginBottom:20 }}>
           CRM — Gestão Comercial
