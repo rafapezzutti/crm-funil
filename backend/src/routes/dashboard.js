@@ -232,10 +232,13 @@ router.get('/sellers', auth, async (req, res) => {
              COUNT(DISTINCT l.id) FILTER (WHERE l.origem = 'prospeccao_ativa')         AS prospectados,
              COALESCE(SUM(COALESCE(l.valor_negociado, l.valor_plano, 0))
                FILTER (WHERE l.stage = 'producao'), 0) AS mrr
-      FROM   seller_profiles sp
-      JOIN   users u ON u.id = sp.user_id
-      LEFT JOIN leads l ON l.responsavel_id = sp.user_id AND l.company_id = ${cid}
-      WHERE  sp.company_id = ${cid} AND sp.ativo = true
+      FROM (
+        SELECT user_id FROM seller_profiles WHERE company_id = ${cid} AND ativo = true
+        UNION
+        SELECT user_id FROM company_members  WHERE company_id = ${cid} AND role = 'admin'
+      ) AS members
+      JOIN   users u ON u.id = members.user_id
+      LEFT JOIN leads l ON l.responsavel_id = members.user_id AND l.company_id = ${cid}
       GROUP  BY u.id, u.name
       ORDER  BY em_producao DESC, mrr DESC`;
     res.json(rows);

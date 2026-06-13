@@ -60,7 +60,8 @@ router.get('/', auth, async (req, res) => {
       comissaoPorVendedor[sid].leads.push({ lead_id: lead.id, meses, pct: Math.round(pct*100), val: Math.round(val*100)/100 });
     }
 
-    // Vendedores da empresa
+    // Vendedores da empresa (inclui admin mesmo sem seller_profile)
+    const cid = req.companyId;
     const sellers = await sql`
       SELECT
         u.id AS seller_id, u.name, u.email, sp.cpf,
@@ -70,14 +71,17 @@ router.get('/', auth, async (req, res) => {
         COALESCE(SUM(COALESCE(l.valor_negociado, l.valor_plano, 0))
           FILTER (WHERE l.stage = 'producao'), 0)                                 AS mrr,
         c.obs
-      FROM   seller_profiles sp
-      JOIN   users u ON u.id = sp.user_id
-      LEFT JOIN leads l
-        ON l.responsavel_id = sp.user_id AND l.company_id = sp.company_id
+      FROM (
+        SELECT user_id FROM seller_profiles WHERE company_id = ${cid} AND ativo = true
+        UNION
+        SELECT user_id FROM company_members  WHERE company_id = ${cid} AND role = 'admin'
+      ) AS members
+      JOIN   users u ON u.id = members.user_id
+      LEFT JOIN seller_profiles sp ON sp.user_id = members.user_id AND sp.company_id = ${cid}
+      LEFT JOIN leads l ON l.responsavel_id = members.user_id AND l.company_id = ${cid}
       LEFT JOIN commissions c
-        ON c.seller_id = sp.user_id AND c.company_id = sp.company_id
+        ON c.seller_id = members.user_id AND c.company_id = ${cid}
         AND c.mes_referencia = ${mesRef}::date
-      WHERE  sp.company_id = ${req.companyId} AND sp.ativo = true
       GROUP  BY u.id, u.name, u.email, sp.cpf, c.obs
       ORDER  BY u.name`;
 
