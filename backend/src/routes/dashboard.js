@@ -244,4 +244,71 @@ router.get('/sellers', auth, async (req, res) => {
 });
 
 
-// ── GET /api/dashbo
+
+// ── GET /api/dashboard/prospecting ───────────────────────────────────────────
+// KPIs de prospecção ativa: leads criados via prospeccao_ativa, funil e conversão
+router.get('/prospecting', auth, async (req, res) => {
+  try {
+    const cid = req.companyId;
+
+    // Leads criados via prospecção ativa no mês atual
+    const [mesAtual] = await sql`
+      SELECT COUNT(*) AS total FROM leads
+      WHERE company_id = ${cid} AND origem = 'prospeccao_ativa'
+        AND created_at >= DATE_TRUNC('month', NOW())`;
+
+    // Total histórico
+    const [historico] = await sql`
+      SELECT COUNT(*) AS total FROM leads
+      WHERE company_id = ${cid} AND origem = 'prospeccao_ativa'`;
+
+    // Distribuição por stage
+    const stageRows = await sql`
+      SELECT stage, COUNT(*) AS total FROM leads
+      WHERE company_id = ${cid} AND origem = 'prospeccao_ativa'
+      GROUP BY stage`;
+    const byStage = {};
+    stageRows.forEach(r => { byStage[r.stage] = parseInt(r.total); });
+
+    // Leads que avançaram para negociação ou além (conversão)
+    const [promovidos] = await sql`
+      SELECT COUNT(*) AS total FROM leads
+      WHERE company_id = ${cid} AND origem = 'prospeccao_ativa'
+        AND stage IN ('negociacao','piloto','producao')`;
+
+    const total     = parseInt(historico.total) || 0;
+    const avancados = parseInt(promovidos.total) || 0;
+    const taxaConv  = total > 0 ? Math.round((avancados / total) * 100) : 0;
+
+    // Distribuição por CRM (pet vs saude)
+    const crmRows = await sql`
+      SELECT crm, COUNT(*) AS total FROM leads
+      WHERE company_id = ${cid} AND origem = 'prospeccao_ativa'
+      GROUP BY crm`;
+    const byCrm = {};
+    crmRows.forEach(r => { byCrm[r.crm] = parseInt(r.total); });
+
+    // Score dos leads ainda em prospecção
+    const scoreRows = await sql`
+      SELECT score, COUNT(*) AS total FROM leads
+      WHERE company_id = ${cid} AND origem = 'prospeccao_ativa' AND stage = 'prospeccao'
+      GROUP BY score`;
+    const byScore = {};
+    scoreRows.forEach(r => { byScore[r.score || 'sem_score'] = parseInt(r.total); });
+
+    // Últimas promoções automáticas
+    const ultimasPromocoes = await sql`
+      SELECT la.created_at, la.descricao, l.nome, l.empresa, l.crm, l.id AS lead_id
+      FROM lead_activities la
+      JOIN leads l ON l.id = la.lead_id
+      WHERE l.company_id = ${cid} AND l.origem = 'prospeccao_ativa' AND la.tipo = 'mudanca_etapa'
+      ORDER BY la.created_at DESC LIMIT 10`;
+
+    res.json({ mesAtual: parseInt(mesAtual.total), historico: total, avancados, taxaConv, byStage, byCrm, byScore, ultimasPromocoes });
+  } catch (err) {
+    console.error('[dashboard/prospecting]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+module.exports = router;

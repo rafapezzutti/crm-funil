@@ -252,6 +252,7 @@ export default function Funil() {
                     <div style={{
                       textAlign:'center', padding:'20px 12px', border:'2px dashed var(--border)',
                       borderRadius:'var(--radius)', color:'var(--muted)', fontSize:12,
+                    }}>
                       Nenhum lead
                     </div>
                   )}
