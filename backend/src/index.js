@@ -20,23 +20,20 @@ app.set('trust proxy', 1);
 
 app.use(helmet());
 
-// Bypass CORS para o endpoint de sync de prospecção (token-protected, não precisa de CORS restrito)
-app.use('/api/leads/prospecting-sync', (req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.sendStatus(204);
-  next();
-});
-
 const allowedOrigins = [process.env.FRONTEND_URL || 'http://localhost:5173'];
-app.use(cors({
-  origin: (origin, cb) => {
-    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
-    cb(new Error('Not allowed by CORS'));
-  },
-  credentials: true,
-}));
+app.use((req, res, next) => {
+  // Sync de prospecção é protegido por token — permite qualquer origin
+  if (req.path.startsWith('/api/leads/prospecting-sync')) {
+    return cors({ origin: true, credentials: false })(req, res, next);
+  }
+  return cors({
+    origin: (origin, cb) => {
+      if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+      cb(new Error('Not allowed by CORS'));
+    },
+    credentials: true,
+  })(req, res, next);
+});
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
