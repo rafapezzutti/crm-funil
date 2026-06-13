@@ -179,5 +179,16 @@ async function seedPlans() {
     { crm:'esportes', nome:'Academia',    valor: 79.90 },
     { crm:'spa',      nome:'Autônomo',    valor: 49.90 },
     { crm:'spa',      nome:'Clínica',     valor: 79.90 },
-    { crm:'saude',    nome:'Autônomo',    valor: 49.90 },
-    { crm:'saude',    
+    { crm:'saude',    nome:'Clínica',     valor: 79.90 },
+    { crm:'pet',      nome:'Pet / Hotel', valor: 49.90 },
+    { crm:'pet',      nome:'Pet + Vet',   valor: 79.90 },
+  ];
+  for (const p of defaults) {
+    await sql`
+      INSERT INTO plans (company_id, crm, nome, valor)
+      VALUES (${companyId}, ${p.crm}, ${p.nome}, ${p.valor})
+      ON CONFLICT DO NOTHING`;
+  }
+}
+
+module.exports = { ensureSchema };

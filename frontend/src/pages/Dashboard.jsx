@@ -302,5 +302,140 @@ function TabProspeccao({ nav }) {
         <div className="kpi-card" style={{borderLeft:'3px solid var(--success)'}}>
           <div className="kpi-label">🎯 Avançaram</div>
           <div className="kpi-value" style={{color:'var(--success)'}}>{data.avancados}</div>
-          <div className="kpi-sub">negociação ou além</div>
-        <
+        </div>
+        <div className="kpi-card" style={{borderLeft:'3px solid var(--purple)'}}>
+          <div className="kpi-label">📈 Conversão</div>
+          <div className="kpi-value" style={{color:'var(--purple)'}}>{data.taxaConv}%</div>
+          <div className="kpi-sub">prosp → negociação+</div>
+        </div>
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:16}}>
+        <div className="card">
+          <div className="section-title">🔽 Funil por Etapa</div>
+          {Object.entries(data.byStage||{}).map(([stage, total]) => {
+            const pct = totalProsp > 0 ? Math.round((parseInt(total)/totalProsp)*100) : 0;
+            return (
+              <div key={stage} style={{marginBottom:10}}>
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
+                  <span style={{color:stageColors[stage]||'var(--muted)',fontWeight:600}}>{stageLabels[stage]||stage}</span>
+                  <span style={{fontWeight:700}}>{total} <span style={{color:'var(--muted)',fontWeight:400}}>({pct}%)</span></span>
+                </div>
+                <div style={{height:6,background:'var(--card2)',borderRadius:3}}>
+                  <div style={{width:`${pct}%`,height:'100%',background:stageColors[stage]||'var(--muted)',borderRadius:3}}/>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{display:'flex',flexDirection:'column',gap:16}}>
+          <div className="card">
+            <div className="section-title">🌡️ Score (leads em Prospecção)</div>
+            {Object.entries(data.byScore||{}).length === 0
+              ? <div style={{color:'var(--muted)',fontSize:13}}>Nenhum lead em prospecção.</div>
+              : Object.entries(data.byScore).map(([score, total]) => (
+                <div key={score} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:'1px solid var(--border)',fontSize:13}}>
+                  <span>{scoreLabels[score]||score}</span>
+                  <span style={{fontWeight:700}}>{total}</span>
+                </div>
+              ))}
+          </div>
+          <div className="card">
+            <div className="section-title">🏷️ Por CRM</div>
+            {['pet','saude','esportes','spa'].filter(c => data.byCrm?.[c]).map(c => (
+              <div key={c} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:'1px solid var(--border)',fontSize:13}}>
+                <span style={{color:`var(--crm-${c})`}}>{c.charAt(0).toUpperCase()+c.slice(1)}</span>
+                <span style={{fontWeight:700}}>{data.byCrm[c]}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {data.ultimasPromocoes?.length > 0 && (
+        <div className="card">
+          <div className="section-title">🚀 Últimas Promoções Automáticas (2× quente)</div>
+          <div style={{display:'flex',flexDirection:'column',gap:8}}>
+            {data.ultimasPromocoes.map((p,i) => (
+              <div key={i} style={{display:'flex',gap:10,alignItems:'center',cursor:'pointer',
+                padding:'6px 0',borderBottom:'1px solid var(--border)'}}
+                onClick={()=>nav(`/leads/${p.lead_id}`)}>
+                <span style={{fontSize:18}}>🎯</span>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:600,fontSize:13}}>{p.empresa||p.nome}</div>
+                  <div style={{fontSize:11,color:'var(--muted)'}}>{p.descricao}</div>
+                </div>
+                <div style={{fontSize:11,color:'var(--muted)',flexShrink:0}}>
+                  {new Date(p.created_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── Dashboard principal ────────────────────────────────────────────────
+export default function Dashboard() {
+  const nav = useNavigate();
+  const [tab,    setTab]    = useState('geral');
+  const [data,   setData]   = useState(null);
+  const [alerts, setAlerts] = useState([]);
+  const [loading,setLoading]= useState(true);
+
+  useEffect(() => {
+    Promise.all([api.get('/dashboard'), api.get('/dashboard/alerts')])
+      .then(([d,a]) => { setData(d.data); setAlerts(a.data); })
+      .catch(console.error)
+      .finally(()=>setLoading(false));
+  }, []);
+
+  const TABS = [
+    ['geral',       '📊 Visão Geral'],
+    ['atividade',   '📅 Atividade 30d'],
+    ['vendedores',  '👥 Vendedores'],
+    ['prospeccao',  '📱 Prospecção Ativa'],
+  ];
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <h1>Dashboard</h1>
+          <span className="text-muted" style={{fontSize:13}}>Visão executiva da operação</span>
+        </div>
+        <button className="btn btn-primary" onClick={()=>nav('/funil')}>🎯 Abrir Funil</button>
+      </div>
+
+      {/* Tabs */}
+      <div style={{display:'flex',gap:4,marginBottom:20,borderBottom:'1px solid var(--border)',paddingBottom:0}}>
+        {TABS.map(([k,l]) => (
+          <button key={k} onClick={()=>setTab(k)}
+            style={{
+              padding:'8px 16px',border:'none',background:'none',cursor:'pointer',
+              fontSize:13,fontWeight:600,
+              color: tab===k?'var(--accent)':'var(--muted)',
+              borderBottom: tab===k?'2px solid var(--accent)':'2px solid transparent',
+              marginBottom:-1,
+            }}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {loading && tab==='geral' ? (
+        <div style={{textAlign:'center',padding:40,color:'var(--muted)'}}>⏳ Carregando…</div>
+      ) : (
+        <>
+          {tab==='geral'       && <TabGeral data={data} alerts={alerts} nav={nav} />}
+          {tab==='atividade'   && <TabAtividade nav={nav} />}
+          {tab==='vendedores'  && <TabVendedores nav={nav} />}
+          {tab==='prospeccao'  && <TabProspeccao nav={nav} />}
+        </>
+      )}
+    </div>
+  );
+}
