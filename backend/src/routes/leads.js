@@ -167,20 +167,39 @@ router.post('/prospecting-sync', async (req, res) => {
     let criados = 0, atualizados = 0, ignorados = 0, promovidos = 0;
 
     for (const p of prospectos) {
-      const classificacao = (p.classificacao || '').toLowerCase();
+      // Aceita tanto 'classificacao' quanto 'score' como nome do campo
+      const classificacao = (p.classificacao || p.score || '').toLowerCase();
       const score         = SCORE_MAP[classificacao];
       const isFrio        = classificacao === 'frio';
 
       const telNum = (p.telefone || p.whatsapp || '').replace(/\D/g, '');
-      if (!telNum) { ignorados++; continue; }
 
-      // Buscar lead existente por telefone
-      const [existing] = await sql`
-        SELECT id, score, stage, prosp_quente_count
-        FROM leads
-        WHERE company_id = ${companyId}::uuid
-          AND regexp_replace(COALESCE(telefone,''), '[^0-9]', '', 'g') = ${telNum}
-        LIMIT 1`;
+      // Buscar lead existente: por telefone (se disponível) ou por nome/empresa
+      let existing;
+      if (telNum) {
+        [existing] = await sql`
+          SELECT id, score, stage, prosp_quente_count
+          FROM leads
+          WHERE company_id = ${companyId}::uuid
+            AND regexp_replace(COALESCE(telefone,''), '[^0-9]', '', 'g') = ${telNum}
+          LIMIT 1`;
+      } else {
+        // Sem telefone: buscar por nome ou empresa (normalizado)
+        const nomeBusca = (p.nome || '').trim();
+        const empBusca  = (p.empresa || '').trim();
+        if (nomeBusca || empBusca) {
+          [existing] = await sql`
+            SELECT id, score, stage, prosp_quente_count
+            FROM leads
+            WHERE company_id = ${companyId}::uuid
+              AND origem = 'prospeccao_ativa'
+              AND (
+                LOWER(TRIM(nome))    = LOWER(${nomeBusca})
+                OR LOWER(TRIM(empresa)) = LOWER(${empBusca})
+              )
+            LIMIT 1`;
+        }
+      }
 
       // ── FRIO: só age se lead já existe no funil ──────────────────────────
       if (isFrio) {
