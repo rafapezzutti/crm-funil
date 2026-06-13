@@ -161,6 +161,10 @@ async function ensureSchema(force = false) {
 
   await runSafe('seed_plans', () => seedPlans());
 
+  // Coluna data_producao (quando o lead entrou em Produção)
+  results.push(await runSafe('leads_migration_data_producao', () => sql`
+    ALTER TABLE leads ADD COLUMN IF NOT EXISTS data_producao TIMESTAMPTZ`));
+
   // Atribuir leads sem dono ao admin da empresa
   await runSafe('assign_orphan_leads', () => sql`
     UPDATE leads l

@@ -395,8 +395,11 @@ router.put('/:id/stage', auth, async (req, res) => {
 
     if (!lead) return res.status(404).json({ error: 'Lead não encontrado.' });
 
-    // Onboarding ao entrar em produção
-    if (stage === 'producao') await ensureOnboarding(lead.id);
+    // Onboarding + data_producao ao entrar em produção
+    if (stage === 'producao') {
+      await ensureOnboarding(lead.id);
+      await sql`UPDATE leads SET data_producao = NOW() WHERE id = ${req.params.id} AND data_producao IS NULL`;
+    }
 
     // Activity log
     const [u] = await sql`SELECT name FROM users WHERE id = ${req.userId}`;

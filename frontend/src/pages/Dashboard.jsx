@@ -265,6 +265,67 @@ function TabVendedores({ nav }) {
           )}
         </div>
       </div>
+
+      {/* Rankings */}
+      {sellers.length > 0 && (
+        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginTop:16}}>
+
+          {/* Ranking por leads convertidos */}
+          <div className="card" style={{padding:16}}>
+            <div style={{fontWeight:700, fontSize:14, marginBottom:12}}>
+              🏆 Ranking — Leads Convertidos
+            </div>
+            {[...sellers]
+              .sort((a,b) => parseInt(b.em_producao||0) - parseInt(a.em_producao||0))
+              .map((s, i) => {
+                const sorted = [...sellers].sort((a,b)=>parseInt(b.em_producao||0)-parseInt(a.em_producao||0));
+                const max = parseInt(sorted[0]?.em_producao||1);
+                const val = parseInt(s.em_producao||0);
+                const pct = max > 0 ? Math.round((val/max)*100) : 0;
+                const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}.`;
+                return (
+                  <div key={s.id} style={{marginBottom:10}}>
+                    <div style={{display:'flex',justifyContent:'space-between',fontSize:13,marginBottom:3}}>
+                      <span><span style={{marginRight:6}}>{medal}</span><strong>{s.name}</strong></span>
+                      <span style={{color:'var(--success)',fontWeight:700}}>{val} {val===1?'lead':'leads'}</span>
+                    </div>
+                    <div style={{height:6, background:'var(--card2)', borderRadius:3}}>
+                      <div style={{width:`${pct}%`, height:'100%', background:'var(--success)', borderRadius:3}}/>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+
+          {/* Ranking por mensagens enviadas (prospecção ativa) */}
+          <div className="card" style={{padding:16}}>
+            <div style={{fontWeight:700, fontSize:14, marginBottom:12}}>
+              📨 Ranking — Mensagens Enviadas
+            </div>
+            {[...sellers]
+              .sort((a,b) => parseInt(b.prospectados||0) - parseInt(a.prospectados||0))
+              .map((s, i) => {
+                const sorted = [...sellers].sort((a,b)=>parseInt(b.prospectados||0)-parseInt(a.prospectados||0));
+                const max = parseInt(sorted[0]?.prospectados||1);
+                const val = parseInt(s.prospectados||0);
+                const pct = max > 0 ? Math.round((val/max)*100) : 0;
+                const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}.`;
+                return (
+                  <div key={s.id} style={{marginBottom:10}}>
+                    <div style={{display:'flex',justifyContent:'space-between',fontSize:13,marginBottom:3}}>
+                      <span><span style={{marginRight:6}}>{medal}</span><strong>{s.name}</strong></span>
+                      <span style={{color:'var(--accent)',fontWeight:700}}>{val} prospectados</span>
+                    </div>
+                    <div style={{height:6, background:'var(--card2)', borderRadius:3}}>
+                      <div style={{width:`${pct}%`, height:'100%', background:'var(--accent)', borderRadius:3}}/>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+
+        </div>
+      )}
     </>
   );
 }

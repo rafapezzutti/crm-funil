@@ -229,6 +229,7 @@ router.get('/sellers', auth, async (req, res) => {
              COUNT(DISTINCT l.id) FILTER (WHERE l.stage = 'producao')                  AS em_producao,
              COUNT(DISTINCT l.id) FILTER (WHERE l.stage = 'piloto')                    AS em_piloto,
              COUNT(DISTINCT l.id) FILTER (WHERE l.stage IN ('perdido','cancelado'))    AS perdidos,
+             COUNT(DISTINCT l.id) FILTER (WHERE l.origem = 'prospeccao_ativa')         AS prospectados,
              COALESCE(SUM(COALESCE(l.valor_negociado, l.valor_plano, 0))
                FILTER (WHERE l.stage = 'producao'), 0) AS mrr
       FROM   seller_profiles sp
