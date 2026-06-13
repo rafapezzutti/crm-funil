@@ -252,5 +252,45 @@ export default function Funil() {
                     <div style={{
                       textAlign:'center', padding:'20px 12px', border:'2px dashed var(--border)',
                       borderRadius:'var(--radius)', color:'var(--muted)', fontSize:12,
-                    }}>
-                      Nenhum
+                      Nenhum lead
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Dialog motivo de perda */}
+      {moveDlg && (
+        <div className="overlay" onClick={e => e.target===e.currentTarget && setMoveDlg(null)}>
+          <div style={{background:'var(--card)', border:'1px solid var(--border)', borderRadius:'var(--radius-lg)',
+            padding:24, maxWidth:400, width:'100%'}}>
+            <h3 style={{marginBottom:16}}>Motivo de {moveDlg.targetStage==='perdido'?'perda':'cancelamento'}</h3>
+            <div className="form-group" style={{marginBottom:16}}>
+              <label>Motivo *</label>
+              <select value={motivo} onChange={e => setMotivo(e.target.value)}>
+                <option value="">Selecione…</option>
+                {['Preço','Concorrente','Não gostou','Não tem interesse'].map(m =>
+                  <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+            <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
+              <button className="btn btn-ghost" onClick={() => { setMoveDlg(null); setMotivo(''); }}>Cancelar</button>
+              <button className="btn btn-danger" disabled={!motivo}
+                onClick={() => doMove(moveDlg.lead, moveDlg.targetStage)}>
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal criar lead */}
+      {modal && (
+        <LeadModal onClose={() => setModal(false)} onSaved={() => { setModal(false); load(); }} />
+      )}
+    </div>
+  );
+}
