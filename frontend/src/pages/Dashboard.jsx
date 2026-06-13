@@ -269,62 +269,38 @@ function TabVendedores({ nav }) {
   );
 }
 
-// ── Dashboard principal ───────────────────────────────────────────────────────
-export default function Dashboard() {
-  const nav = useNavigate();
-  const [tab,    setTab]    = useState('geral');
-  const [data,   setData]   = useState(null);
-  const [alerts, setAlerts] = useState([]);
-  const [loading,setLoading]= useState(true);
+// ── Aba 4: Prospecção Ativa ───────────────────────────────────────────────────
+function TabProspeccao({ nav }) {
+  const [data,    setData]    = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([api.get('/dashboard'), api.get('/dashboard/alerts')])
-      .then(([d,a]) => { setData(d.data); setAlerts(a.data); })
-      .catch(console.error)
-      .finally(()=>setLoading(false));
+    api.get('/dashboard/prospecting').then(r => setData(r.data)).catch(console.error).finally(()=>setLoading(false));
   }, []);
 
-  const TABS = [
-    ['geral',     '📊 Visão Geral'],
-    ['atividade', '📅 Atividade 30d'],
-    ['vendedores','👥 Vendedores'],
-  ];
+  if (loading) return <div style={{textAlign:'center',padding:40,color:'var(--muted)'}}>Carregando…</div>;
+  if (!data)   return null;
+
+  const stageLabels = { prospeccao:'Em Prospecção', negociacao:'Em Negociação', piloto:'Em Piloto', producao:'Em Produção', perdido:'Perdidos' };
+  const stageColors = { prospeccao:'var(--muted)', negociacao:'var(--warning)', piloto:'var(--purple)', producao:'var(--success)', perdido:'var(--danger)' };
+  const scoreLabels = { muito_quente:'🔥 Muito Quente', quente:'🌶️ Quente', morno:'⚡ Morno', frio:'💧 Frio', sem_score:'Sem score' };
+  const totalProsp  = Object.values(data.byStage||{}).reduce((s,v)=>s+parseInt(v),0);
 
   return (
-    <div className="page">
-      <div className="page-header">
-        <div>
-          <h1>Dashboard</h1>
-          <span className="text-muted" style={{fontSize:13}}>Visão executiva da operação</span>
+    <>
+      <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4,1fr)',marginBottom:24}}>
+        <div className="kpi-card" style={{borderLeft:'3px solid #25D366'}}>
+          <div className="kpi-label">📱 Leads este mês</div>
+          <div className="kpi-value" style={{color:'#25D366'}}>{data.mesAtual}</div>
+          <div className="kpi-sub">via prospecção ativa</div>
         </div>
-        <button className="btn btn-primary" onClick={()=>nav('/funil')}>🎯 Abrir Funil</button>
-      </div>
-
-      {/* Tabs */}
-      <div style={{display:'flex',gap:4,marginBottom:20,borderBottom:'1px solid var(--border)',paddingBottom:0}}>
-        {TABS.map(([k,l]) => (
-          <button key={k} onClick={()=>setTab(k)}
-            style={{
-              padding:'8px 16px',border:'none',background:'none',cursor:'pointer',
-              fontSize:13,fontWeight:600,
-              color: tab===k?'var(--accent)':'var(--muted)',
-              borderBottom: tab===k?'2px solid var(--accent)':'2px solid transparent',
-              marginBottom:-1,
-            }}>
-            {l}
-          </button>
-        ))}
-      </div>
-
-      {loading && tab==='geral' ? (
-        <div style={{textAlign:'center',padding:40,color:'var(--muted)'}}>⏳ Carregando…</div>
-      ) : (
-        <>
-          {tab==='geral'      && <TabGeral data={data} alerts={alerts} nav={nav} />}
-          {tab==='atividade'  && <TabAtividade nav={nav} />}
-          {tab==='vendedores' && <TabVendedores nav={nav} />}
-        </>
-      )}
-    </div>
-  );
-}
+        <div className="kpi-card" style={{borderLeft:'3px solid var(--accent)'}}>
+          <div className="kpi-label">📊 Total histórico</div>
+          <div className="kpi-value" style={{color:'var(--accent)'}}>{data.historico}</div>
+          <div className="kpi-sub">todos os períodos</div>
+        </div>
+        <div className="kpi-card" style={{borderLeft:'3px solid var(--success)'}}>
+          <div className="kpi-label">🎯 Avançaram</div>
+          <div className="kpi-value" style={{color:'var(--success)'}}>{data.avancados}</div>
+          <div className="kpi-sub">negociação ou além</div>
+        <

@@ -65,10 +65,18 @@ async function ensureSchema(force = false) {
       trial_end         TIMESTAMPTZ,
       crm_externo_id    INT,
       crm_externo_slug  VARCHAR(50),
-      health_score      VARCHAR(10)  DEFAULT 'green',
-      created_at        TIMESTAMPTZ  DEFAULT NOW(),
-      updated_at        TIMESTAMPTZ  DEFAULT NOW()
+      health_score          VARCHAR(10)  DEFAULT 'green',
+      ultimo_whatsapp_at    TIMESTAMPTZ,
+      prosp_quente_count    INT          DEFAULT 0,
+      created_at            TIMESTAMPTZ  DEFAULT NOW(),
+      updated_at            TIMESTAMPTZ  DEFAULT NOW()
     )`));
+
+  // Migração segura: adiciona colunas se a tabela já existir
+  results.push(await runSafe('leads_migration_whatsapp', () => sql`
+    ALTER TABLE leads
+      ADD COLUMN IF NOT EXISTS ultimo_whatsapp_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS prosp_quente_count INT DEFAULT 0`));
 
   results.push(await runSafe('lead_activities', () => sql`
     CREATE TABLE IF NOT EXISTS lead_activities (
@@ -172,16 +180,4 @@ async function seedPlans() {
     { crm:'spa',      nome:'Autônomo',    valor: 49.90 },
     { crm:'spa',      nome:'Clínica',     valor: 79.90 },
     { crm:'saude',    nome:'Autônomo',    valor: 49.90 },
-    { crm:'saude',    nome:'Clínica',     valor: 79.90 },
-    { crm:'pet',      nome:'Pet / Hotel', valor: 49.90 },
-    { crm:'pet',      nome:'Pet + Vet',   valor: 79.90 },
-  ];
-  for (const p of defaults) {
-    await sql`
-      INSERT INTO plans (company_id, crm, nome, valor)
-      VALUES (${companyId}, ${p.crm}, ${p.nome}, ${p.valor})
-      ON CONFLICT DO NOTHING`;
-  }
-}
-
-module.exports = { ensureSchema };
+    { crm:'saude',    

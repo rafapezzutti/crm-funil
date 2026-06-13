@@ -24,17 +24,28 @@ function trialDays(end) {
   return Math.ceil((new Date(end) - Date.now()) / 86400000);
 }
 
+function whatsappAge(ts) {
+  if (!ts) return null;
+  const diff = Math.round((Date.now() - new Date(ts)) / 86400000);
+  if (diff === 0) return 'hoje';
+  if (diff === 1) return 'ontem';
+  return `${diff}d atrás`;
+}
+
 function LeadCard({ lead, onOpen, onMove }) {
-  const days = lead.stage === 'piloto' ? trialDays(lead.trial_end) : null;
+  const days    = lead.stage === 'piloto' ? trialDays(lead.trial_end) : null;
+  const zap     = whatsappAge(lead.ultimo_whatsapp_at);
+  const isProsp = lead.origem === 'prospeccao_ativa';
   return (
     <div
       style={{
         background:'var(--card2)', border:'1px solid var(--border)',
         borderRadius:'var(--radius)', padding:'12px', cursor:'pointer',
         transition:'border-color .15s',
+        borderLeft: isProsp ? '3px solid #25D366' : '1px solid var(--border)',
       }}
       onMouseEnter={e => e.currentTarget.style.borderColor='var(--accent)'}
-      onMouseLeave={e => e.currentTarget.style.borderColor='var(--border)'}
+      onMouseLeave={e => e.currentTarget.style.borderColor= isProsp ? '#25D366' : 'var(--border)'}
       onClick={() => onOpen(lead.id)}
     >
       <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:6}}>
@@ -52,6 +63,11 @@ function LeadCard({ lead, onOpen, onMove }) {
             {CRM_LABEL[lead.crm] || lead.crm}
           </span>
         )}
+        {isProsp && (
+          <span className="badge" style={{background:'rgba(37,211,102,.15)', color:'#25D366', fontSize:9}}>
+            📱 Prosp. Ativa
+          </span>
+        )}
         {lead.plano_nome && (
           <span className="badge" style={{background:'var(--card)', color:'var(--muted)'}}>
             {lead.plano_nome}
@@ -66,6 +82,16 @@ function LeadCard({ lead, onOpen, onMove }) {
           color:       days < 0 ? 'var(--danger)'       : days <= 3 ? 'var(--warning)'       : 'var(--purple)',
         }}>
           {days < 0 ? `⏰ Vencido há ${Math.abs(days)}d` : `🧪 Vence em ${days}d`}
+        </div>
+      )}
+      {/* Último contato WhatsApp (só para leads de prospecção ativa) */}
+      {isProsp && zap && (
+        <div style={{
+          fontSize:10, padding:'2px 6px', borderRadius:4, marginBottom:6,
+          background:'rgba(37,211,102,.08)', color:'var(--muted)',
+          display:'inline-flex', alignItems:'center', gap:4,
+        }}>
+          💬 Último contato: {zap}
         </div>
       )}
       <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
@@ -111,6 +137,7 @@ export default function Funil() {
   const [q,       setQ]       = useState('');
   const [crmF,    setCrmF]    = useState('');
   const [scoreF,  setScoreF]  = useState('');
+  const [origemF, setOrigemF] = useState('');
   const [moveDlg, setMoveDlg] = useState(null); // {lead, targetStage}
   const [motivo,  setMotivo]  = useState('');
 
@@ -120,7 +147,9 @@ export default function Funil() {
     setLoading(true);
     try {
       const { data } = await api.get('/leads', { params: { q, crm: crmF, score: scoreF } });
-      setLeads(data.filter(l => l.stage !== 'cancelado'));
+      let filtered = data.filter(l => l.stage !== 'cancelado');
+      if (origemF) filtered = filtered.filter(l => l.origem === origemF);
+      setLeads(filtered);
     } catch(e) { console.error(e); }
     finally { setLoading(false); }
   }
@@ -175,6 +204,14 @@ export default function Funil() {
           {['muito_quente','quente','morno','frio','muito_frio'].map(s =>
             <option key={s} value={s}>{s.replace('_',' ')}</option>)}
         </select>
+        <select value={origemF} onChange={e => setOrigemF(e.target.value)} style={{width:160, flex:'none'}}>
+          <option value="">Todas as origens</option>
+          <option value="prospeccao_ativa">📱 Prospecção Ativa</option>
+          <option value="whatsapp">WhatsApp</option>
+          <option value="indicacao">Indicação</option>
+          <option value="instagram">Instagram</option>
+          <option value="outro">Outro</option>
+        </select>
         <button className="btn btn-ghost" onClick={load}>Filtrar</button>
       </div>
 
@@ -216,45 +253,4 @@ export default function Funil() {
                       textAlign:'center', padding:'20px 12px', border:'2px dashed var(--border)',
                       borderRadius:'var(--radius)', color:'var(--muted)', fontSize:12,
                     }}>
-                      Nenhum lead
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Dialog motivo de perda */}
-      {moveDlg && (
-        <div className="overlay" onClick={e => e.target===e.currentTarget && setMoveDlg(null)}>
-          <div style={{background:'var(--card)', border:'1px solid var(--border)', borderRadius:'var(--radius-lg)',
-            padding:24, maxWidth:400, width:'100%'}}>
-            <h3 style={{marginBottom:16}}>Motivo de {moveDlg.targetStage==='perdido'?'perda':'cancelamento'}</h3>
-            <div className="form-group" style={{marginBottom:16}}>
-              <label>Motivo *</label>
-              <select value={motivo} onChange={e => setMotivo(e.target.value)}>
-                <option value="">Selecione…</option>
-                {['Preço','Concorrente','Não gostou','Não tem interesse'].map(m =>
-                  <option key={m} value={m}>{m}</option>)}
-              </select>
-            </div>
-            <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
-              <button className="btn btn-ghost" onClick={() => { setMoveDlg(null); setMotivo(''); }}>Cancelar</button>
-              <button className="btn btn-danger" disabled={!motivo}
-                onClick={() => doMove(moveDlg.lead, moveDlg.targetStage)}>
-                Confirmar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal criar lead */}
-      {modal && (
-        <LeadModal onClose={() => setModal(false)} onSaved={() => { setModal(false); load(); }} />
-      )}
-    </div>
-  );
-}
+                      Nenhum
