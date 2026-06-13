@@ -135,7 +135,15 @@ router.post('/', auth, async (req, res) => {
 //   frio (lead novo)       → ignorado (não polui o funil)
 //   quente + já era quente → promove automaticamente para stage "negociacao" (2 revisões consecutivas)
 //   todos                  → atualiza ultimo_whatsapp_at e incrementa prosp_quente_count se quente
+router.options('/prospecting-sync', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.sendStatus(204);
+});
+
 router.post('/prospecting-sync', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
   try {
     const { token, data, leads: prospectos } = req.body;
 
