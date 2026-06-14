@@ -161,6 +161,17 @@ async function ensureSchema(force = false) {
 
   await runSafe('seed_plans', () => seedPlans());
 
+  // Configurações por empresa (WhatsApp + CRM types)
+  results.push(await runSafe('company_settings', () => sql`
+    CREATE TABLE IF NOT EXISTS company_settings (
+      company_id         UUID PRIMARY KEY,
+      crm_types          JSONB        DEFAULT '[]',
+      whatsapp_api_url   TEXT,
+      whatsapp_api_token TEXT,
+      whatsapp_instance  TEXT,
+      updated_at         TIMESTAMPTZ  DEFAULT NOW()
+    )`));
+
   // Colunas trial/plan em companies
   results.push(await runSafe('companies_trial', () => sql`
     ALTER TABLE companies
@@ -194,24 +205,4 @@ async function seedPlans() {
   const cos = await sql`SELECT id FROM companies LIMIT 1`;
   if (!cos.length) return;
   const companyId = cos[0].id;
-  const existing  = await sql`SELECT id FROM plans WHERE company_id = ${companyId} LIMIT 1`;
-  if (existing.length) return;
-
-  const defaults = [
-    { crm:'esportes', nome:'Autônomo',    valor: 49.90 },
-    { crm:'esportes', nome:'Academia',    valor: 79.90 },
-    { crm:'spa',      nome:'Autônomo',    valor: 49.90 },
-    { crm:'spa',      nome:'Clínica',     valor: 79.90 },
-    { crm:'saude',    nome:'Clínica',     valor: 79.90 },
-    { crm:'pet',      nome:'Pet / Hotel', valor: 49.90 },
-    { crm:'pet',      nome:'Pet + Vet',   valor: 79.90 },
-  ];
-  for (const p of defaults) {
-    await sql`
-      INSERT INTO plans (company_id, crm, nome, valor)
-      VALUES (${companyId}, ${p.crm}, ${p.nome}, ${p.valor})
-      ON CONFLICT DO NOTHING`;
-  }
-}
-
-module.exports = { ensureSchema };
+  const 

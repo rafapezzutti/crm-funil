@@ -1,131 +1,130 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import api from '../api';
-import Toast from '../components/Toast';
-import { useToast } from '../useToast';
-import styles from './Settings.module.css';
+
+const ICONS = ['🏥','🐾','⚽','💆','🏢','💊','🦷','👁','🧘','🏋','🐕','🌿','💅','✂️','🚗','🍽️','📚','💻'];
+const DEFAULT_TYPES = [
+  { value:'saude',    label:'Saúde',    icon:'🏥' },
+  { value:'pet',      label:'Pet',      icon:'🐾' },
+  { value:'esportes', label:'Esportes', icon:'⚽' },
+  { value:'spa',      label:'Spa',      icon:'💆' },
+];
+
+function slugify(s) {
+  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]/g,'-').replace(/-+/g,'-').slice(0,30);
+}
 
 export default function Settings() {
-  const { company, user } = useAuth();
-  const [name, setName]         = useState(company?.name || '');
-  const [saving, setSaving]     = useState(false);
-  const [syncing, setSyncing]   = useState(false);
-  const [syncStatus, setSyncStatus] = useState(null);
-  const { toasts, toast }           = useToast();
+  const { company, user, role } = useAuth();
+  const isAdmin = role === 'admin';
+
+  // Empresa
+  const [companyName, setCompanyName] = useState(company?.name || '');
+  const [savingName, setSavingName]   = useState(false);
+
+  // CRM Types
+  const [crmTypes, setCrmTypes] = useState(DEFAULT_TYPES);
+  const [newLabel, setNewLabel] = useState('');
+  const [newIcon,  setNewIcon]  = useState('🏢');
+
+  // WhatsApp
+  const [wa, setWa]           = useState({ whatsapp_api_url:'', whatsapp_api_token:'', whatsapp_instance:'' });
+  const [waStatus, setWaStatus] = useState(null);
+  const [testingWa, setTestingWa] = useState(false);
+
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg]       = useState('');
 
   useEffect(() => {
-    api.get('/sync/status')
-      .then(({ data }) => setSyncStatus(data))
-      .catch(() => {});
+    api.get('/company/settings').then(r => {
+      if (r.data.crm_types?.length) setCrmTypes(r.data.crm_types);
+      setWa({
+        whatsapp_api_url:   r.data.whatsapp_api_url   || '',
+        whatsapp_api_token: r.data.whatsapp_api_token || '',
+        whatsapp_instance:  r.data.whatsapp_instance  || '',
+      });
+    }).catch(() => {});
   }, []);
 
-  async function handleSave(e) {
+  async function saveName(e) {
     e.preventDefault();
+    setSavingName(true);
+    try {
+      await api.put('/company', { name: companyName });
+      setMsg('✅ Nome atualizado!');
+    } catch (err) {
+      setMsg('❌ ' + (err.response?.data?.error || 'Erro ao salvar.'));
+    } finally { setSavingName(false); }
+  }
+
+  function addType() {
+    const label = newLabel.trim();
+    if (!label) return;
+    const value = slugify(label);
+    if (crmTypes.find(t => t.value === value)) return;
+    setCrmTypes(p => [...p, { value, label, icon: newIcon }]);
+    setNewLabel(''); setNewIcon('🏢');
+  }
+
+  function removeType(val) { setCrmTypes(p => p.filter(t => t.value !== val)); }
+  function updateType(val, field, v) {
+    setCrmTypes(p => p.map(t => t.value === val ? { ...t, [field]: v } : t));
+  }
+
+  async function saveAll() {
     setSaving(true);
     try {
-      await api.put('/company', { name });
-      toast('Empresa atualizada!');
+      await api.put('/company/settings', { crm_types: crmTypes, ...wa });
+      setMsg('✅ Configurações salvas!');
     } catch (err) {
-      toast(err.response?.data?.error || 'Erro ao salvar.', 'error');
-    } finally {
-      setSaving(false);
-    }
+      setMsg('❌ ' + (err.response?.data?.error || 'Erro ao salvar.'));
+    } finally { setSaving(false); }
   }
 
-  async function handleSync() {
-    setSyncing(true);
+  async function testWhatsapp() {
+    setTestingWa(true); setWaStatus(null);
     try {
-      const { data } = await api.post('/sync/run');
-      const total = data.results?.reduce((s, r) => s + (r.imported || 0), 0) || 0;
-      toast(`Sync concluído! ${total} novos registros importados.`);
-      // Refresh status
-      const st = await api.get('/sync/status');
-      setSyncStatus(st.data);
+      const { data } = await api.post('/company/settings/test-whatsapp', wa);
+      setWaStatus(data);
     } catch (err) {
-      toast(err.response?.data?.error || 'Erro no sync.', 'error');
-    } finally {
-      setSyncing(false);
-    }
+      setWaStatus({ connected: false, message: err.response?.data?.error || 'Não foi possível conectar.' });
+    } finally { setTestingWa(false); }
   }
 
-  function fmtDate(iso) {
-    if (!iso) return 'Nunca';
-    return new Date(iso).toLocaleString('pt-BR');
-  }
-
-  const sources = syncStatus?.sources || {};
-  const hasSync = Object.values(sources).some(s => s.configured);
+  const trialDias = company?.trial_ends_at
+    ? Math.ceil((new Date(company.trial_ends_at) - Date.now()) / 86400000)
+    : null;
 
   return (
-    <div className={styles.page}>
-      <h1 className={styles.pageTitle}>Configurações da empresa</h1>
-
-      <div className={styles.card}>
-        <form onSubmit={handleSave} className={styles.form}>
-          <label className={styles.label}>Nome da empresa
-            <input value={name} onChange={e => setName(e.target.value)} required />
-          </label>
-          <label className={styles.label}>Slug (identificador)
-            <input value={company?.slug || ''} disabled />
-          </label>
-          <label className={styles.label}>ID
-            <input value={company?.id || ''} disabled />
-          </label>
-          <button type="submit" disabled={saving || company?.role !== 'admin'} className={styles.btn}>
-            {saving ? 'Salvando…' : 'Salvar'}
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <h1>⚙️ Configurações</h1>
+          <span className="text-muted" style={{fontSize:13}}>Personalize o P. Funil para sua empresa</span>
+        </div>
+        {isAdmin && (
+          <button className="btn btn-primary" onClick={saveAll} disabled={saving}>
+            {saving ? 'Salvando…' : '💾 Salvar tudo'}
           </button>
-          {company?.role !== 'admin' && (
-            <p className={styles.hint}>Apenas administradores podem editar.</p>
-          )}
-        </form>
-      </div>
-
-      {/* ── Sync entre CRMs ── */}
-      <div className={styles.card}>
-        <h2 className={styles.cardTitle}>🔄 Sincronização com outros CRMs</h2>
-        {hasSync ? (
-          <>
-            <div className={styles.syncGrid}>
-              {Object.entries(sources).map(([key, src]) => (
-                <div key={key} className={`${styles.syncItem} ${src.configured ? styles.syncOn : styles.syncOff}`}>
-                  <span className={styles.syncName}>
-                    {key === 'esportes' ? '⚽ CRM Esportes' : key === 'spas' ? '💆 CRM Spas' : '🏥 CRM Saúde'}
-                  </span>
-                  <span className={styles.syncLabel}>
-                    {src.configured ? '✓ Configurado' : '✗ Não configurado'}
-                  </span>
-                  {src.configured && (
-                    <span className={styles.syncLast}>Último sync: {fmtDate(src.lastSync)}</span>
-                  )}
-                </div>
-              ))}
-            </div>
-            <p className={styles.hint}>Sync automático a cada 6 horas. Use o botão para forçar agora.</p>
-            <button
-              className={styles.btnSync}
-              onClick={handleSync}
-              disabled={syncing || company?.role !== 'admin'}
-            >
-              {syncing ? '⏳ Sincronizando…' : '🔄 Sincronizar agora'}
-            </button>
-          </>
-        ) : (
-          <p className={styles.hint}>
-            Nenhuma fonte configurada. Adicione <code>DATABASE_URL_ESPORTES</code>,{' '}
-            <code>DATABASE_URL_SPAS</code> e/ou <code>DATABASE_URL_SAUDE</code> nas variáveis
-            de ambiente do Render para ativar a sincronização.
-          </p>
         )}
       </div>
 
-      <div className={styles.card}>
-        <h2 className={styles.cardTitle}>Sua conta</h2>
-        <div className={styles.infoRow}><span>Nome</span><strong>{user?.name}</strong></div>
-        <div className={styles.infoRow}><span>E-mail</span><strong>{user?.email}</strong></div>
-        <div className={styles.infoRow}><span>Função</span><strong>{company?.role}</strong></div>
-      </div>
+      {msg && (
+        <div style={{
+          padding:'10px 16px', borderRadius:8, marginBottom:16, fontSize:13,
+          background: msg.startsWith('✅') ? 'rgba(16,185,129,.12)' : 'rgba(239,68,68,.12)',
+          color:      msg.startsWith('✅') ? 'var(--success)'        : 'var(--danger)',
+        }}>
+          {msg}
+          <button onClick={() => setMsg('')} style={{float:'right', background:'none', border:'none', cursor:'pointer', color:'inherit', fontSize:15}}>✕</button>
+        </div>
+      )}
 
-      <Toast toasts={toasts} />
-    </div>
-  );
-}
+      {/* ── Plano / Trial ── */}
+      <div className="card" style={{marginBottom:16, padding:16}}>
+        <div style={{fontWeight:700, fontSize:14, marginBottom:10}}>📋 Plano atual</div>
+        <div style={{display:'flex', gap:24, flexWrap:'wrap', alignItems:'center'}}>
+          <div>
+            <div style={{fontSize:11, color:'var(--muted)', marginBottom:2}}>Plano</div>
+            <div style={{fontWeight:700, textTransform:'uppercase', color:'var(--accent)', fontSize:15}}>
+              {company?.plan || 'trial'}

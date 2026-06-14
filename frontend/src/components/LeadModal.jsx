@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import api from '../api';
 import { useAuth } from '../AuthContext';
 
-const CRM_OPTS    = ['saude','spa','esportes','pet'];
+const CRM_OPTS_DEFAULT = ['saude','spa','esportes','pet'];
 const ORIGEM_OPTS = ['whatsapp','linkedin','google','instagram','site','indicacao','evento','prospeccao_ativa','outro'];
 const SCORE_OPTS  = ['muito_quente','quente','morno','frio','muito_frio'];
 const ACAO_OPTS   = ['ligacao','whatsapp','demonstracao','proposta','follow_up','outro'];
@@ -24,10 +24,18 @@ export default function LeadModal({ lead: initial, onClose, onSaved }) {
     responsavel_id:'',
     ...initial,
   });
-  const [plans,  setPlans]  = useState([]);
-  const [team,   setTeam]   = useState([]);   // membros da empresa
-  const [saving, setSaving] = useState(false);
-  const [err,    setErr]    = useState('');
+  const [plans,    setPlans]   = useState([]);
+  const [team,     setTeam]    = useState([]);
+  const [crmOpts,  setCrmOpts] = useState(CRM_OPTS_DEFAULT);
+  const [saving,   setSaving]  = useState(false);
+  const [err,      setErr]     = useState('');
+
+  // Carrega tipos de CRM da empresa
+  useEffect(() => {
+    api.get('/company/crm-types')
+      .then(r => { if (r.data?.length) setCrmOpts(r.data.map(t => t.value)); })
+      .catch(() => {});
+  }, []);
 
   // Carrega planos quando CRM muda
   useEffect(() => {
@@ -161,7 +169,7 @@ export default function LeadModal({ lead: initial, onClose, onSaved }) {
                 <label>CRM de Interesse</label>
                 <select value={form.crm} onChange={e => { set('crm', e.target.value); set('plano_id',''); }}>
                   <option value="">Selecione…</option>
-                  {CRM_OPTS.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase()+c.slice(1)}</option>)}
+                  {crmOpts.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase()+c.slice(1)}</option>)}
                 </select>
               </div>
               <div className="form-group">
@@ -226,12 +234,4 @@ export default function LeadModal({ lead: initial, onClose, onSaved }) {
         </div>
 
         <div className="modal-footer">
-          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={save} disabled={saving}>
-            {saving ? '⏳ Salvando…' : editing ? 'Salvar Alterações' : 'Criar Lead'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+          <button className="btn btn-ghost" onClick={onCl

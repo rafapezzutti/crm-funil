@@ -13,14 +13,15 @@ const GROUPS = [
     { icon:'💵', label:'Comissões', path:'/comissoes', roles:['admin','master'] },
   ]},
   { label:'Administração', items:[
-    { icon:'👥', label:'Vendedores', path:'/admin', roles:['admin','master'] },
+    { icon:'👥', label:'Vendedores',    path:'/admin',          roles:['admin','master'] },
+    { icon:'⚙️', label:'Configurações', path:'/configuracoes',  roles:['admin'] },
   ]},
 ];
 
 export default function Sidebar() {
   const nav            = useNavigate();
   const { pathname }   = useLocation();
-  const { user, logout, role } = useAuth();
+  const { user, logout, role, company } = useAuth();
 
   const [open, setOpen] = useState({});
   const isOpen = (l) => open[l] === true; // recolhido por padrão
@@ -106,10 +107,4 @@ export default function Sidebar() {
         <div style={{ fontSize:10, color:'var(--muted)', marginBottom:8, textTransform:'uppercase', letterSpacing:'.5px' }}>
           {role === 'vendedor' ? 'Vendedor' : 'Admin'}
         </div>
-        <button className="btn btn-ghost btn-sm" onClick={logout} style={{width:'100%'}}>
-          Sair
-        </button>
-      </div>
-    </aside>
-  );
-}
+        <button className="btn btn-ghost btn-s
