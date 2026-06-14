@@ -161,6 +161,13 @@ async function ensureSchema(force = false) {
 
   await runSafe('seed_plans', () => seedPlans());
 
+  // Colunas trial/plan em companies
+  results.push(await runSafe('companies_trial', () => sql`
+    ALTER TABLE companies
+      ADD COLUMN IF NOT EXISTS plan          VARCHAR(20)  DEFAULT 'trial',
+      ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ DEFAULT NOW() + INTERVAL '14 days',
+      ADD COLUMN IF NOT EXISTS status        VARCHAR(20)  DEFAULT 'active'`));
+
   // Coluna data_producao (quando o lead entrou em Produção)
   results.push(await runSafe('leads_migration_data_producao', () => sql`
     ALTER TABLE leads ADD COLUMN IF NOT EXISTS data_producao TIMESTAMPTZ`));

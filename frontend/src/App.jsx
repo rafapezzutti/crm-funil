@@ -10,6 +10,7 @@ import Planos         from './pages/Planos';
 import Admin          from './pages/Admin';
 import Comissoes      from './pages/Comissoes';
 import FillAssessment  from './pages/FillAssessment';
+import Register        from './pages/Register';
 import ForgotPassword  from './pages/ForgotPassword';
 import ResetPassword   from './pages/ResetPassword';
 
@@ -33,7 +34,8 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <Routes>
-          <Route path="/login" element={<Login />} />
+          <Route path="/login"    element={<Login />} />
+          <Route path="/register" element={<Register />} />
           <Route path="/" element={<PrivateRoute><Shell><Dashboard /></Shell></PrivateRoute>} />
           <Route path="/funil" element={<PrivateRoute><Shell><Funil /></Shell></PrivateRoute>} />
           <Route path="/leads/:id" element={<PrivateRoute><Shell><LeadDetail /></Shell></PrivateRoute>} />

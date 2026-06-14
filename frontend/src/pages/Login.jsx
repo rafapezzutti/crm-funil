@@ -52,6 +52,10 @@ export default function Login() {
         <div style={{ textAlign:'center', marginTop:12, fontSize:13 }}>
           <Link to="/forgot-password" style={{ color:'var(--accent)' }}>Esqueci minha senha</Link>
         </div>
+        <div style={{ textAlign:'center', marginTop:16, fontSize:13, color:'var(--muted)', borderTop:'1px solid var(--border)', paddingTop:16 }}>
+          Ainda não tem conta?{' '}
+          <Link to="/register" style={{ color:'var(--accent)', fontWeight:600 }}>Criar grátis →</Link>
+        </div>
       </form>
     </div>
   );

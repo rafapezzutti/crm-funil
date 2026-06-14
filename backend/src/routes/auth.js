@@ -33,7 +33,7 @@ function signToken(userId, companyId, role) {
 // ── POST /api/auth/register ───────────────────────
 // Cria usuário + empresa ao mesmo tempo
 router.post('/register', async (req, res) => {
-  const { name, email, password, companyName } = req.body;
+  const { name, email, password, companyName, segment } = req.body;
   if (!name || !email || !password || !companyName) {
     return res.status(400).json({ error: 'Preencha todos os campos obrigatórios.' });
   }
@@ -47,24 +47,54 @@ router.post('/register', async (req, res) => {
       return res.status(409).json({ error: 'E-mail já cadastrado.' });
     }
     const hash = await bcrypt.hash(password, 10);
+
     // Create user
     const [user] = await sql`
       INSERT INTO users (email, password_hash, name)
       VALUES (${email.toLowerCase()}, ${hash}, ${name})
       RETURNING id, email, name`;
-    // Create company
+
+    // Create company with trial
     const slug = makeSlug(companyName);
     const [company] = await sql`
-      INSERT INTO companies (name, slug)
-      VALUES (${companyName}, ${slug})
-      RETURNING id, name, slug`;
-    // Add user as admin of company
+      INSERT INTO companies (name, slug, plan, trial_ends_at)
+      VALUES (${companyName}, ${slug}, 'trial', NOW() + INTERVAL '14 days')
+      RETURNING id, name, slug, plan, trial_ends_at`;
+
+    // Add user as admin
     await sql`
       INSERT INTO company_members (company_id, user_id, role)
       VALUES (${company.id}, ${user.id}, 'admin')`;
+
+    // Create seller_profile for admin
+    await sql`
+      INSERT INTO seller_profiles (user_id, company_id, ativo)
+      VALUES (${user.id}, ${company.id}, true)
+      ON CONFLICT (user_id) DO NOTHING`;
+
+    // Seed default plans based on segment
+    const seg = segment || 'saude';
+    const defaultPlans = {
+      saude:    [{ nome:'Clínica Básica', valor:79.90 }, { nome:'Clínica Pro', valor:149.90 }],
+      pet:      [{ nome:'Pet Shop',       valor:49.90 }, { nome:'Pet + Vet',    valor:79.90 }],
+      esportes: [{ nome:'Autônomo',       valor:49.90 }, { nome:'Academia',     valor:79.90 }],
+      spa:      [{ nome:'Estética',       valor:49.90 }, { nome:'Spa Completo', valor:89.90 }],
+      outro:    [{ nome:'Plano Básico',   valor:49.90 }, { nome:'Plano Pro',    valor:99.90 }],
+    };
+    for (const p of (defaultPlans[seg] || defaultPlans.outro)) {
+      await sql`
+        INSERT INTO plans (company_id, crm, nome, valor)
+        VALUES (${company.id}, ${seg}, ${p.nome}, ${p.valor})
+        ON CONFLICT DO NOTHING`;
+    }
+
     const token = signToken(user.id, company.id, 'admin');
-    res.json({ token, user: { id: user.id, name: user.name, email: user.email },
-               company: { id: company.id, name: company.name, slug: company.slug } });
+    res.json({
+      token,
+      user:    { id: user.id, name: user.name, email: user.email },
+      company: { id: company.id, name: company.name, slug: company.slug,
+                 plan: company.plan, trial_ends_at: company.trial_ends_at },
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Erro interno ao criar conta.' });
@@ -84,9 +114,9 @@ router.post('/login', async (req, res) => {
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) return res.status(401).json({ error: 'E-mail ou senha incorretos.' });
 
-    // Get companies this user belongs to
+    // Get companies this user belongs to (inclui plan/trial)
     const memberships = await sql`
-      SELECT cm.company_id, cm.role, c.name, c.slug
+      SELECT cm.company_id, cm.role, c.name, c.slug, c.plan, c.trial_ends_at, c.status
       FROM company_members cm
       JOIN companies c ON c.id = cm.company_id
       WHERE cm.user_id = ${user.id}
@@ -109,8 +139,13 @@ router.post('/login', async (req, res) => {
     res.json({
       token,
       user: { id: user.id, name: user.name, email: user.email },
-      company: { id: membership.company_id, name: membership.name, slug: membership.slug, role: membership.role },
-      companies: memberships.map(m => ({ id: m.company_id, name: m.name, slug: m.slug, role: m.role }))
+      company: { id: membership.company_id, name: membership.name, slug: membership.slug,
+                 role: membership.role, plan: membership.plan,
+                 trial_ends_at: membership.trial_ends_at, status: membership.status },
+      companies: memberships.map(m => ({
+        id: m.company_id, name: m.name, slug: m.slug, role: m.role,
+        plan: m.plan, trial_ends_at: m.trial_ends_at,
+      }))
     });
   } catch (err) {
     console.error(err);
