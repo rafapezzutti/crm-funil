@@ -15,10 +15,10 @@ const TRIGGER_OPTS = [
   { value:'ambos',  label:'🔄 Ambos' },
 ];
 const EVENT_OPTS = [
-  { value:'lead_created',    label:'Lead criado' },
-  { value:'lead_moved',      label:'Lead mudou de etapa' },
-  { value:'lead_closed',     label:'Lead fechado' },
-  { value:'whatsapp_reply',  label:'Resposta WhatsApp' },
+  { value:'lead_created',   label:'Lead criado' },
+  { value:'lead_moved',     label:'Lead mudou de etapa' },
+  { value:'lead_closed',    label:'Lead fechado' },
+  { value:'whatsapp_reply', label:'Resposta WhatsApp' },
 ];
 const STATUS_COLOR = { ok:'var(--success)', erro:'var(--danger)', running:'var(--accent)' };
 
@@ -37,16 +37,18 @@ const EMPTY = {
 
 export default function Robos() {
   const { role } = useAuth();
-  const isAdmin = role === 'admin';
+  const isAdmin  = ['admin','master'].includes(role);
+  const isMaster = role === 'master';
 
-  const [robots,  setRobots]  = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [modal,   setModal]   = useState(null); // null | 'create' | robot obj
-  const [logs,    setLogs]    = useState(null); // null | { robot, items }
-  const [form,    setForm]    = useState(EMPTY);
-  const [saving,  setSaving]  = useState(false);
-  const [err,     setErr]     = useState('');
-  const [msg,     setMsg]     = useState('');
+  const [robots,   setRobots]   = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [seeding,  setSeeding]  = useState(false);
+  const [modal,    setModal]    = useState(null);
+  const [logs,     setLogs]     = useState(null);
+  const [form,     setForm]     = useState(EMPTY);
+  const [saving,   setSaving]   = useState(false);
+  const [err,      setErr]      = useState('');
+  const [msg,      setMsg]      = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -60,13 +62,25 @@ export default function Robos() {
   useEffect(() => { load(); }, [load]);
 
   function openCreate() { setForm(EMPTY); setErr(''); setModal('create'); }
-  function openEdit(r) { setForm({ ...r }); setErr(''); setModal(r); }
+  function openEdit(r)  { setForm({ ...r }); setErr(''); setModal(r); }
 
   async function openLogs(r) {
     try {
       const { data } = await api.get(`/robots/${r.id}/logs`);
       setLogs({ robot: r, items: data });
     } catch { setLogs({ robot: r, items: [] }); }
+  }
+
+  async function seedDefault() {
+    if (!confirm('Criar os 6 robôs padrão da P Soluções?')) return;
+    setSeeding(true);
+    try {
+      const { data } = await api.post('/robots/seed');
+      setMsg(`✅ Criados: ${data.created.join(', ')}${data.skipped.length ? ` · Já existiam: ${data.skipped.join(', ')}` : ''}`);
+      load();
+    } catch (e) {
+      setMsg('❌ ' + (e.response?.data?.error || 'Erro ao criar robôs padrão.'));
+    } finally { setSeeding(false); }
   }
 
   async function save() {
@@ -94,15 +108,6 @@ export default function Robos() {
     } catch { /* ignore */ }
   }
 
-  async function deleteRobot(r) {
-    if (!confirm(`Desativar "${r.name}"?`)) return;
-    try {
-      await api.delete(`/robots/${r.id}`);
-      setMsg('Robô desativado.');
-      load();
-    } catch { /* ignore */ }
-  }
-
   const set = (k) => (e) => setForm(p => ({ ...p, [k]: e.target.value }));
 
   return (
@@ -111,12 +116,20 @@ export default function Robos() {
         <div>
           <h1>🤖 Robôs</h1>
           <span className="text-muted" style={{ fontSize:13 }}>
-            Automações configuradas para esta empresa
+            {isMaster ? 'Todas as empresas' : 'Automações desta empresa'}
           </span>
         </div>
-        {isAdmin && (
-          <button className="btn btn-primary" onClick={openCreate}>+ Novo Robô</button>
-        )}
+        <div style={{ display:'flex', gap:8 }}>
+          {isMaster && (
+            <button className="btn btn-ghost" onClick={seedDefault} disabled={seeding}
+              title="Cria os 6 processos padrão da P Soluções">
+              {seeding ? '⏳' : '🌱 Seed padrão'}
+            </button>
+          )}
+          {isAdmin && (
+            <button className="btn btn-primary" onClick={openCreate}>+ Novo Robô</button>
+          )}
+        </div>
       </div>
 
       {msg && (
@@ -139,16 +152,22 @@ export default function Robos() {
           <div style={{ fontSize:13, color:'var(--muted)', marginBottom:16 }}>
             Robôs executam tarefas automáticas como prospecção, análise e relatórios.
           </div>
-          {isAdmin && (
-            <button className="btn btn-primary" onClick={openCreate}>Criar primeiro robô</button>
-          )}
+          <div style={{ display:'flex', gap:8, justifyContent:'center', flexWrap:'wrap' }}>
+            {isMaster && (
+              <button className="btn btn-ghost" onClick={seedDefault} disabled={seeding}>
+                {seeding ? '⏳' : '🌱 Criar 6 robôs padrão'}
+              </button>
+            )}
+            {isAdmin && (
+              <button className="btn btn-primary" onClick={openCreate}>+ Criar robô</button>
+            )}
+          </div>
         </div>
       ) : (
-        <div style={{ display:'grid', gap:12 }}>
+        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
           {robots.map(r => (
             <div key={r.id} className="card" style={{ padding:'16px 20px', display:'flex', gap:16, alignItems:'flex-start', flexWrap:'wrap' }}>
-              {/* Status dot */}
-              <div style={{ marginTop:2, flexShrink:0 }}>
+              <div style={{ marginTop:4, flexShrink:0 }}>
                 <span style={{
                   display:'inline-block', width:10, height:10, borderRadius:'50%',
                   background: r.ativo ? 'var(--success)' : 'var(--muted)',
@@ -156,10 +175,15 @@ export default function Robos() {
                 }} />
               </div>
 
-              <div style={{ flex:1, minWidth:200 }}>
+              <div style={{ flex:1, minWidth:180 }}>
                 <div style={{ fontWeight:700, fontSize:15, marginBottom:2 }}>
                   {tipoLabel(r.tipo).split(' ')[0]} {r.name}
                 </div>
+                {isMaster && r.company_name && (
+                  <div style={{ fontSize:11, color:'var(--accent)', marginBottom:4, fontWeight:600 }}>
+                    🏢 {r.company_name}
+                  </div>
+                )}
                 {r.description && (
                   <div style={{ fontSize:12, color:'var(--muted)', marginBottom:6 }}>{r.description}</div>
                 )}
@@ -176,7 +200,7 @@ export default function Robos() {
                 </div>
               </div>
 
-              <div style={{ textAlign:'right', flexShrink:0, minWidth:120 }}>
+              <div style={{ textAlign:'right', flexShrink:0, minWidth:110 }}>
                 <div style={{ fontSize:11, color:'var(--muted)', marginBottom:2 }}>Última execução</div>
                 <div style={{ fontSize:12, marginBottom:4 }}>{fmtDate(r.last_run_at)}</div>
                 {r.last_status && (
@@ -185,23 +209,18 @@ export default function Robos() {
                   </span>
                 )}
                 <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>
-                  {r.total_runs} execuç{r.total_runs == 1 ? 'ão' : 'ões'}
+                  {r.total_runs} exec.
                 </div>
               </div>
 
               <div style={{ display:'flex', flexDirection:'column', gap:6, flexShrink:0 }}>
                 <button className="btn btn-ghost" style={{ fontSize:12, padding:'5px 10px' }}
-                  onClick={() => openLogs(r)}>
-                  📋 Logs
-                </button>
+                  onClick={() => openLogs(r)}>📋 Logs</button>
                 {isAdmin && (
                   <>
                     <button className="btn btn-ghost" style={{ fontSize:12, padding:'5px 10px' }}
-                      onClick={() => openEdit(r)}>
-                      ✏️ Editar
-                    </button>
-                    <button
-                      className="btn btn-ghost"
+                      onClick={() => openEdit(r)}>✏️ Editar</button>
+                    <button className="btn btn-ghost"
                       style={{ fontSize:12, padding:'5px 10px', color: r.ativo ? 'var(--warning)' : 'var(--success)' }}
                       onClick={() => toggleAtivo(r)}>
                       {r.ativo ? '⏸ Pausar' : '▶️ Ativar'}
@@ -214,7 +233,7 @@ export default function Robos() {
         </div>
       )}
 
-      {/* ── Modal criar/editar ────────────────────────────────────────────── */}
+      {/* ── Modal criar/editar ───────────────────────────────────────────────── */}
       {modal !== null && (
         <div className="overlay" onClick={e => e.target === e.currentTarget && setModal(null)}>
           <div className="modal" style={{ maxWidth:600, maxHeight:'90vh', overflowY:'auto' }}>
@@ -274,33 +293,30 @@ export default function Robos() {
               )}
 
               <div className="form-group" style={{ marginBottom:12 }}>
-                <label>Prompt / Instruções para o robô</label>
+                <label>Prompt / Instruções</label>
                 <textarea value={form.prompt_template || ''} onChange={set('prompt_template')}
-                  rows={5} placeholder="Descreva o que o robô deve fazer quando executar. Ex: Analise as conversas do WhatsApp das últimas 24h e classifique os leads..." />
+                  rows={5} placeholder="Descreva o que o robô deve fazer quando executar…" />
               </div>
 
               {(form.tipo === 'prospeccao_whatsapp' || form.tipo === 'analise_conversas') && (
                 <div className="form-group" style={{ marginBottom:12 }}>
-                  <label>Template de mensagem WhatsApp (opcional)</label>
+                  <label>Template WhatsApp (opcional)</label>
                   <textarea value={form.whatsapp_template || ''} onChange={set('whatsapp_template')}
-                    rows={3} placeholder="Olá {nome}, tudo bem? Vi que você tem interesse em..." />
-                  <div style={{ fontSize:10, color:'var(--muted)', marginTop:3 }}>
-                    Use {'{'} {'}'} nome , empresa , segmento como variáveis.
-                  </div>
+                    rows={3} placeholder="Olá {nome}, tudo bem?…" />
                 </div>
               )}
             </div>
             <div className="modal-footer">
               <button className="btn btn-ghost" onClick={() => setModal(null)}>Cancelar</button>
               <button className="btn btn-primary" onClick={save} disabled={saving}>
-                {saving ? '⏳ Salvando…' : modal === 'create' ? 'Criar Robô' : 'Salvar Alterações'}
+                {saving ? '⏳ Salvando…' : modal === 'create' ? 'Criar Robô' : 'Salvar'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Modal de logs ─────────────────────────────────────────────────── */}
+      {/* ── Modal logs ──────────────────────────────────────────────────────── */}
       {logs && (
         <div className="overlay" onClick={e => e.target === e.currentTarget && setLogs(null)}>
           <div className="modal" style={{ maxWidth:700, maxHeight:'80vh', overflowY:'auto' }}>
@@ -318,13 +334,11 @@ export default function Robos() {
                   {logs.items.map(l => (
                     <div key={l.id} style={{ padding:'10px 14px', background:'var(--card2)', borderRadius:8 }}>
                       <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
-                        <span style={{ fontSize:12, fontWeight:700,
-                          color: STATUS_COLOR[l.status] || 'var(--muted)' }}>
+                        <span style={{ fontSize:12, fontWeight:700, color: STATUS_COLOR[l.status] || 'var(--muted)' }}>
                           {l.status === 'ok' ? '✅ OK' : l.status === 'erro' ? '❌ Erro' : `⏳ ${l.status}`}
                         </span>
                         <span style={{ fontSize:11, color:'var(--muted)' }}>
-                          {fmtDate(l.created_at)}
-                          {l.duration_ms ? ` · ${l.duration_ms}ms` : ''}
+                          {fmtDate(l.created_at)}{l.duration_ms ? ` · ${l.duration_ms}ms` : ''}
                         </span>
                       </div>
                       {l.output && (

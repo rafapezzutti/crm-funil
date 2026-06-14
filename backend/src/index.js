@@ -15,6 +15,7 @@ const assessmentRoutes = require('./routes/assessments');
 const whatsappRoutes   = require('./routes/whatsapp');
 const companyRoutes    = require('./routes/company');
 const robotRoutes      = require('./routes/robots');
+const masterRoutes     = require('./routes/master');
 
 const app = express();
 
@@ -55,6 +56,7 @@ app.use('/api/assessments', assessmentRoutes);
 app.use('/api/whatsapp',    whatsappRoutes);
 app.use('/api/company',     companyRoutes);
 app.use('/api/robots',      robotRoutes);
+app.use('/api/master',      masterRoutes);
 
 // ── Setup endpoint ────────────────────────────────────────────────────────────
 app.get('/api/setup', async (req, res) => {
