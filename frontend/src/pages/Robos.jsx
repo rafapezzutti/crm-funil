@@ -10,15 +10,15 @@ const TIPO_OPTS = [
   { value:'custom',              label:'⚙️ Personalizado' },
 ];
 const TRIGGER_OPTS = [
-  { value:'cron',   label:'⏰ Agendamento' },
-  { value:'evento', label:'⚡ Evento' },
-  { value:'ambos',  label:'🔄 Ambos' },
+  { value:'cron',   label:'⏰ Agendamento automático' },
+  { value:'evento', label:'⚡ Gatilho por evento' },
+  { value:'ambos',  label:'🔄 Agendamento + Evento' },
 ];
 const EVENT_OPTS = [
   { value:'lead_created',   label:'Lead criado' },
   { value:'lead_moved',     label:'Lead mudou de etapa' },
   { value:'lead_closed',    label:'Lead fechado' },
-  { value:'whatsapp_reply', label:'Resposta WhatsApp' },
+  { value:'whatsapp_reply', label:'Resposta no WhatsApp' },
 ];
 const STATUS_COLOR = { ok:'var(--success)', erro:'var(--danger)', running:'var(--accent)' };
 
@@ -29,6 +29,70 @@ function fmtDate(d) {
   return new Date(d).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
 }
 
+// ── Seletor de agendamento amigável ────────────────────────────────────────────
+function buildCron(freq, hour, weekday) {
+  if (freq === 'daily')    return '0 ' + hour + ' * * *';
+  if (freq === 'weekdays') return '0 ' + hour + ' * * 1-5';
+  if (freq === 'weekly')   return '0 ' + hour + ' * * ' + weekday;
+  return null;
+}
+function parseCron(expr) {
+  if (!expr) return { freq:'daily', hour:'9', weekday:'1' };
+  const parts = expr.trim().split(/\s+/);
+  if (parts.length < 5) return { freq:'daily', hour:'9', weekday:'1' };
+  const [, hour, , , dow] = parts;
+  if (dow === '1-5') return { freq:'weekdays', hour, weekday:'1' };
+  if (dow !== '*')   return { freq:'weekly',   hour, weekday: dow };
+  return { freq:'daily', hour, weekday:'1' };
+}
+const FREQ_OPTS = [
+  { value:'daily',    label:'Todo dia' },
+  { value:'weekdays', label:'Dias úteis (seg–sex)' },
+  { value:'weekly',   label:'Uma vez por semana' },
+  { value:'manual',   label:'Somente manual (sem agendamento)' },
+];
+const HOUR_OPTS = Array.from({length:24}, (_,i) => ({ value:String(i), label: String(i).padStart(2,'0') + ':00' }));
+const DOW_OPTS  = [
+  { value:'1', label:'Segunda' }, { value:'2', label:'Terça'  },
+  { value:'3', label:'Quarta'  }, { value:'4', label:'Quinta' },
+  { value:'5', label:'Sexta'   }, { value:'6', label:'Sábado' },
+  { value:'0', label:'Domingo' },
+];
+function CronPicker({ value, onChange }) {
+  const p = parseCron(value);
+  const [freq, setFreq]       = useState(value ? p.freq : 'daily');
+  const [hour, setHour]       = useState(p.hour);
+  const [weekday, setWeekday] = useState(p.weekday);
+  function upd(f, h, w) { onChange(f === 'manual' ? '' : (buildCron(f, h, w) || '')); }
+  return (
+    <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+      <div style={{ flex:'1 1 160px' }}>
+        <div style={{ fontSize:12, color:'var(--muted)', marginBottom:4 }}>Com que frequência?</div>
+        <select value={freq} onChange={e => { setFreq(e.target.value); upd(e.target.value, hour, weekday); }}>
+          {FREQ_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      </div>
+      {freq !== 'manual' && (
+        <div style={{ flex:'0 0 110px' }}>
+          <div style={{ fontSize:12, color:'var(--muted)', marginBottom:4 }}>Horário</div>
+          <select value={hour} onChange={e => { setHour(e.target.value); upd(freq, e.target.value, weekday); }}>
+            {HOUR_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
+      )}
+      {freq === 'weekly' && (
+        <div style={{ flex:'1 1 130px' }}>
+          <div style={{ fontSize:12, color:'var(--muted)', marginBottom:4 }}>Dia da semana</div>
+          <select value={weekday} onChange={e => { setWeekday(e.target.value); upd(freq, hour, e.target.value); }}>
+            {DOW_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Página principal ──────────────────────────────────────────────────────────
 const EMPTY = {
   name:'', description:'', tipo:'prospeccao_whatsapp',
   trigger_type:'cron', cron_expr:'0 9 * * *', event_trigger:'',
@@ -52,10 +116,8 @@ export default function Robos() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    try {
-      const { data } = await api.get('/robots');
-      setRobots(data);
-    } catch { /* ignore */ }
+    try { const { data } = await api.get('/robots'); setRobots(data); }
+    catch { /* ignore */ }
     finally { setLoading(false); }
   }, []);
 
@@ -65,10 +127,8 @@ export default function Robos() {
   function openEdit(r)  { setForm({ ...r }); setErr(''); setModal(r); }
 
   async function openLogs(r) {
-    try {
-      const { data } = await api.get(`/robots/${r.id}/logs`);
-      setLogs({ robot: r, items: data });
-    } catch { setLogs({ robot: r, items: [] }); }
+    try { const { data } = await api.get('/robots/' + r.id + '/logs'); setLogs({ robot: r, items: data }); }
+    catch { setLogs({ robot: r, items: [] }); }
   }
 
   async function seedDefault() {
@@ -76,7 +136,7 @@ export default function Robos() {
     setSeeding(true);
     try {
       const { data } = await api.post('/robots/seed');
-      setMsg(`✅ Criados: ${data.created.join(', ')}${data.skipped.length ? ` · Já existiam: ${data.skipped.join(', ')}` : ''}`);
+      setMsg('✅ Criados: ' + data.created.join(', ') + (data.skipped.length ? ' · Já existiam: ' + data.skipped.join(', ') : ''));
       load();
     } catch (e) {
       setMsg('❌ ' + (e.response?.data?.error || 'Erro ao criar robôs padrão.'));
@@ -87,28 +147,32 @@ export default function Robos() {
     if (!form.name.trim()) { setErr('Nome é obrigatório.'); return; }
     setSaving(true); setErr('');
     try {
-      if (modal === 'create') {
-        await api.post('/robots', form);
-        setMsg('✅ Robô criado!');
-      } else {
-        await api.put(`/robots/${modal.id}`, form);
-        setMsg('✅ Robô atualizado!');
-      }
-      setModal(null);
-      load();
+      if (modal === 'create') { await api.post('/robots', form); setMsg('✅ Robô criado!'); }
+      else { await api.put('/robots/' + modal.id, form); setMsg('✅ Robô atualizado!'); }
+      setModal(null); load();
     } catch (e) {
       setErr(e.response?.data?.error || 'Erro ao salvar.');
     } finally { setSaving(false); }
   }
 
   async function toggleAtivo(r) {
-    try {
-      await api.put(`/robots/${r.id}`, { ...r, ativo: !r.ativo });
-      load();
-    } catch { /* ignore */ }
+    try { await api.put('/robots/' + r.id, { ...r, ativo: !r.ativo }); load(); }
+    catch { /* ignore */ }
   }
 
-  const set = (k) => (e) => setForm(p => ({ ...p, [k]: e.target.value }));
+  const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
+
+  function descAgendamento(cron_expr, trigger_type) {
+    if (trigger_type === 'evento') return '⚡ Por evento';
+    if (!cron_expr) return '▶️ Manual';
+    const p = parseCron(cron_expr);
+    const h = String(p.hour).padStart(2,'0') + ':00';
+    if (p.freq === 'daily')    return '⏰ Todo dia às ' + h;
+    if (p.freq === 'weekdays') return '⏰ Dias úteis às ' + h;
+    const dia = DOW_OPTS.find(d => d.value === p.weekday)?.label || 'Semana';
+    if (p.freq === 'weekly')   return '⏰ ' + dia + ' às ' + h;
+    return cron_expr;
+  }
 
   return (
     <div className="page">
@@ -116,14 +180,13 @@ export default function Robos() {
         <div>
           <h1>🤖 Robôs</h1>
           <span className="text-muted" style={{ fontSize:13 }}>
-            {isMaster ? 'Todas as empresas' : 'Automações desta empresa'}
+            {isMaster ? 'Todos os processos automatizados' : 'Automações desta empresa'}
           </span>
         </div>
         <div style={{ display:'flex', gap:8 }}>
           {isMaster && (
-            <button className="btn btn-ghost" onClick={seedDefault} disabled={seeding}
-              title="Cria os 6 processos padrão da P Soluções">
-              {seeding ? '⏳' : '🌱 Seed padrão'}
+            <button className="btn btn-ghost" onClick={seedDefault} disabled={seeding}>
+              {seeding ? '⏳' : '🌱 Criar padrões'}
             </button>
           )}
           {isAdmin && (
@@ -153,14 +216,8 @@ export default function Robos() {
             Robôs executam tarefas automáticas como prospecção, análise e relatórios.
           </div>
           <div style={{ display:'flex', gap:8, justifyContent:'center', flexWrap:'wrap' }}>
-            {isMaster && (
-              <button className="btn btn-ghost" onClick={seedDefault} disabled={seeding}>
-                {seeding ? '⏳' : '🌱 Criar 6 robôs padrão'}
-              </button>
-            )}
-            {isAdmin && (
-              <button className="btn btn-primary" onClick={openCreate}>+ Criar robô</button>
-            )}
+            {isMaster && <button className="btn btn-ghost" onClick={seedDefault} disabled={seeding}>{seeding ? '⏳' : '🌱 Criar 6 robôs padrão'}</button>}
+            {isAdmin && <button className="btn btn-primary" onClick={openCreate}>+ Criar robô</button>}
           </div>
         </div>
       ) : (
@@ -174,71 +231,51 @@ export default function Robos() {
                   boxShadow: r.ativo ? '0 0 6px var(--success)' : 'none',
                 }} />
               </div>
-
               <div style={{ flex:1, minWidth:180 }}>
                 <div style={{ fontWeight:700, fontSize:15, marginBottom:2 }}>
                   {tipoLabel(r.tipo).split(' ')[0]} {r.name}
                 </div>
                 {isMaster && r.company_name && (
-                  <div style={{ fontSize:11, color:'var(--accent)', marginBottom:4, fontWeight:600 }}>
-                    🏢 {r.company_name}
-                  </div>
+                  <div style={{ fontSize:11, color:'var(--accent)', marginBottom:4, fontWeight:600 }}>🏢 {r.company_name}</div>
                 )}
                 {r.description && (
                   <div style={{ fontSize:12, color:'var(--muted)', marginBottom:6 }}>{r.description}</div>
                 )}
                 <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-                  <span style={{ fontSize:11, background:'var(--card2)', padding:'2px 8px', borderRadius:20 }}>
-                    {tipoLabel(r.tipo)}
-                  </span>
-                  <span style={{ fontSize:11, background:'var(--card2)', padding:'2px 8px', borderRadius:20 }}>
-                    {triggerLabel(r.trigger_type)}
-                  </span>
-                  {r.cron_expr && (
-                    <span style={{ fontSize:11, color:'var(--muted)', fontFamily:'monospace' }}>{r.cron_expr}</span>
-                  )}
+                  <span style={{ fontSize:11, background:'var(--card2)', padding:'2px 8px', borderRadius:20 }}>{tipoLabel(r.tipo)}</span>
+                  <span style={{ fontSize:11, background:'var(--card2)', padding:'2px 8px', borderRadius:20 }}>{descAgendamento(r.cron_expr, r.trigger_type)}</span>
                 </div>
               </div>
-
               <div style={{ textAlign:'right', flexShrink:0, minWidth:110 }}>
                 <div style={{ fontSize:11, color:'var(--muted)', marginBottom:2 }}>Última execução</div>
                 <div style={{ fontSize:12, marginBottom:4 }}>{fmtDate(r.last_run_at)}</div>
                 {r.last_status && (
                   <span style={{ fontSize:11, fontWeight:700, color: STATUS_COLOR[r.last_status] || 'var(--muted)' }}>
-                    {r.last_status === 'ok' ? '✅ OK' : r.last_status === 'erro' ? '❌ Erro' : '⏳ Running'}
+                    {r.last_status === 'ok' ? '✅ OK' : r.last_status === 'erro' ? '❌ Erro' : '⏳ Rodando'}
                   </span>
                 )}
-                <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>
-                  {r.total_runs} exec.
-                </div>
+                <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>{r.total_runs} exec.</div>
               </div>
-
               <div style={{ display:'flex', flexDirection:'column', gap:6, flexShrink:0 }}>
-                <button className="btn btn-ghost" style={{ fontSize:12, padding:'5px 10px' }}
-                  onClick={() => openLogs(r)}>📋 Logs</button>
-                {isAdmin && (
-                  <>
-                    <button className="btn btn-ghost" style={{ fontSize:12, padding:'5px 10px' }}
-                      onClick={() => openEdit(r)}>✏️ Editar</button>
-                    <button className="btn btn-ghost"
-                      style={{ fontSize:12, padding:'5px 10px', color: r.ativo ? 'var(--warning)' : 'var(--success)' }}
-                      onClick={() => toggleAtivo(r)}>
-                      {r.ativo ? '⏸ Pausar' : '▶️ Ativar'}
-                    </button>
-                  </>
-                )}
+                <button className="btn btn-ghost" style={{ fontSize:12, padding:'5px 10px' }} onClick={() => openLogs(r)}>📋 Logs</button>
+                {isAdmin && <>
+                  <button className="btn btn-ghost" style={{ fontSize:12, padding:'5px 10px' }} onClick={() => openEdit(r)}>✏️ Editar</button>
+                  <button className="btn btn-ghost" style={{ fontSize:12, padding:'5px 10px', color: r.ativo ? 'var(--warning)' : 'var(--success)' }} onClick={() => toggleAtivo(r)}>
+                    {r.ativo ? '⏸ Pausar' : '▶️ Ativar'}
+                  </button>
+                </>}
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* ── Modal criar/editar ───────────────────────────────────────────────── */}
+      {/* Modal criar/editar */}
       {modal !== null && (
         <div className="overlay" onClick={e => e.target === e.currentTarget && setModal(null)}>
-          <div className="modal" style={{ maxWidth:600, maxHeight:'90vh', overflowY:'auto' }}>
+          <div className="modal" style={{ maxWidth:620, maxHeight:'90vh', overflowY:'auto' }}>
             <div className="modal-header">
-              <h2>{modal === 'create' ? '🤖 Novo Robô' : `✏️ Editar: ${modal.name}`}</h2>
+              <h2>{modal === 'create' ? '🤖 Novo Robô' : '✏️ Editar: ' + modal.name}</h2>
               <button className="close-btn" onClick={() => setModal(null)}>✕</button>
             </div>
             <div className="modal-body">
@@ -259,32 +296,29 @@ export default function Robos() {
 
               <div className="form-group" style={{ marginBottom:12 }}>
                 <label>Descrição</label>
-                <input value={form.description || ''} onChange={set('description')}
-                  placeholder="O que este robô faz?" />
+                <input value={form.description || ''} onChange={set('description')} placeholder="O que este robô faz?" />
               </div>
 
-              <div className="form-row form-row-2" style={{ marginBottom:12 }}>
-                <div className="form-group">
-                  <label>Gatilho</label>
-                  <select value={form.trigger_type} onChange={set('trigger_type')}>
-                    {TRIGGER_OPTS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                  </select>
-                </div>
-                {(form.trigger_type === 'cron' || form.trigger_type === 'ambos') && (
-                  <div className="form-group">
-                    <label>Cron expression</label>
-                    <input value={form.cron_expr || ''} onChange={set('cron_expr')}
-                      placeholder="0 9 * * *" style={{ fontFamily:'monospace' }} />
-                    <div style={{ fontSize:10, color:'var(--muted)', marginTop:3 }}>
-                      min hora dia mês semana — ex: 0 9 * * * = todo dia às 9h
-                    </div>
-                  </div>
-                )}
+              <div className="form-group" style={{ marginBottom:12 }}>
+                <label>Gatilho de execução</label>
+                <select value={form.trigger_type} onChange={set('trigger_type')}>
+                  {TRIGGER_OPTS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
               </div>
+
+              {(form.trigger_type === 'cron' || form.trigger_type === 'ambos') && (
+                <div className="form-group" style={{ marginBottom:12 }}>
+                  <label>Quando executar automaticamente?</label>
+                  <CronPicker
+                    value={form.cron_expr || ''}
+                    onChange={v => setForm(p => ({ ...p, cron_expr: v }))}
+                  />
+                </div>
+              )}
 
               {(form.trigger_type === 'evento' || form.trigger_type === 'ambos') && (
                 <div className="form-group" style={{ marginBottom:12 }}>
-                  <label>Evento</label>
+                  <label>Qual evento dispara o robô?</label>
                   <select value={form.event_trigger || ''} onChange={set('event_trigger')}>
                     <option value="">Selecione…</option>
                     {EVENT_OPTS.map(e => <option key={e.value} value={e.value}>{e.label}</option>)}
@@ -293,14 +327,14 @@ export default function Robos() {
               )}
 
               <div className="form-group" style={{ marginBottom:12 }}>
-                <label>Prompt / Instruções</label>
+                <label>Instruções para o robô</label>
                 <textarea value={form.prompt_template || ''} onChange={set('prompt_template')}
                   rows={5} placeholder="Descreva o que o robô deve fazer quando executar…" />
               </div>
 
               {(form.tipo === 'prospeccao_whatsapp' || form.tipo === 'analise_conversas') && (
                 <div className="form-group" style={{ marginBottom:12 }}>
-                  <label>Template WhatsApp (opcional)</label>
+                  <label>Template de mensagem WhatsApp (opcional)</label>
                   <textarea value={form.whatsapp_template || ''} onChange={set('whatsapp_template')}
                     rows={3} placeholder="Olá {nome}, tudo bem?…" />
                 </div>
@@ -316,36 +350,30 @@ export default function Robos() {
         </div>
       )}
 
-      {/* ── Modal logs ──────────────────────────────────────────────────────── */}
+      {/* Modal logs */}
       {logs && (
         <div className="overlay" onClick={e => e.target === e.currentTarget && setLogs(null)}>
           <div className="modal" style={{ maxWidth:700, maxHeight:'80vh', overflowY:'auto' }}>
             <div className="modal-header">
-              <h2>📋 Logs — {logs.robot.name}</h2>
+              <h2>📋 Histórico — {logs.robot.name}</h2>
               <button className="close-btn" onClick={() => setLogs(null)}>✕</button>
             </div>
             <div className="modal-body">
               {logs.items.length === 0 ? (
-                <div style={{ textAlign:'center', padding:32, color:'var(--muted)' }}>
-                  Nenhuma execução registrada ainda.
-                </div>
+                <div style={{ textAlign:'center', padding:32, color:'var(--muted)' }}>Nenhuma execução registrada ainda.</div>
               ) : (
                 <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                   {logs.items.map(l => (
                     <div key={l.id} style={{ padding:'10px 14px', background:'var(--card2)', borderRadius:8 }}>
                       <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
                         <span style={{ fontSize:12, fontWeight:700, color: STATUS_COLOR[l.status] || 'var(--muted)' }}>
-                          {l.status === 'ok' ? '✅ OK' : l.status === 'erro' ? '❌ Erro' : `⏳ ${l.status}`}
+                          {l.status === 'ok' ? '✅ OK' : l.status === 'erro' ? '❌ Erro' : '⏳ ' + l.status}
                         </span>
                         <span style={{ fontSize:11, color:'var(--muted)' }}>
-                          {fmtDate(l.created_at)}{l.duration_ms ? ` · ${l.duration_ms}ms` : ''}
+                          {fmtDate(l.created_at)}{l.duration_ms ? ' · ' + l.duration_ms + 'ms' : ''}
                         </span>
                       </div>
-                      {l.output && (
-                        <pre style={{ fontSize:11, color:'var(--muted)', whiteSpace:'pre-wrap', margin:0, lineHeight:1.5 }}>
-                          {l.output}
-                        </pre>
-                      )}
+                      {l.output && <pre style={{ fontSize:11, color:'var(--muted)', whiteSpace:'pre-wrap', margin:0, lineHeight:1.5 }}>{l.output}</pre>}
                     </div>
                   ))}
                 </div>

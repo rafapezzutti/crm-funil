@@ -2,28 +2,28 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import api from '../api';
 
-const ICONS = ['\U0001f3e5','\U0001f43e','⚽','\U0001f486','\U0001f3e2','\U0001f48a','\U0001f9b7','\U0001f441','\U0001f9d8','\U0001f3cb','\U0001f415','\U0001f33f','\U0001f485','✂️','\U0001f697','\U0001f37d️','\U0001f4da','\U0001f4bb'];
+const ICONS = ['🏥','🐾','⚽','💆','🏢','💊','🦷','👁','🧘','🏋','🐕','🌿','💅','✂️','🚗','🍽️','📚','💻'];
 const DEFAULT_TYPES = [
-  { value:'saude',    label:'Saúde',    icon:'\U0001f3e5' },
-  { value:'pet',      label:'Pet',      icon:'\U0001f43e' },
+  { value:'saude',    label:'Saúde',    icon:'🏥' },
+  { value:'pet',      label:'Pet',      icon:'🐾' },
   { value:'esportes', label:'Esportes', icon:'⚽' },
-  { value:'spa',      label:'Spa',      icon:'\U0001f486' },
+  { value:'spa',      label:'Spa',      icon:'💆' },
 ];
 
 function slugify(s) {
-  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]/g,'-').replace(/-+/g,'-').slice(0,30);
+  return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'-').replace(/-+/g,'-').slice(0,30);
 }
 
 export default function Settings() {
   const { company, user, role } = useAuth();
-  const isAdmin = role === 'admin';
+  const isAdmin = role === 'admin' || role === 'master';
 
   const [companyName, setCompanyName] = useState(company?.name || '');
   const [savingName, setSavingName]   = useState(false);
 
   const [crmTypes, setCrmTypes] = useState(DEFAULT_TYPES);
   const [newLabel, setNewLabel] = useState('');
-  const [newIcon,  setNewIcon]  = useState('\U0001f3e2');
+  const [newIcon,  setNewIcon]  = useState('🏢');
 
   const [wa, setWa]             = useState({ whatsapp_api_url:'', whatsapp_api_token:'', whatsapp_instance:'' });
   const [waStatus, setWaStatus] = useState(null);
@@ -60,7 +60,7 @@ export default function Settings() {
     const value = slugify(label);
     if (crmTypes.find(t => t.value === value)) return;
     setCrmTypes(p => [...p, { value, label, icon: newIcon }]);
-    setNewLabel(''); setNewIcon('\U0001f3e2');
+    setNewLabel(''); setNewIcon('🏢');
   }
 
   function removeType(val) { setCrmTypes(p => p.filter(t => t.value !== val)); }
@@ -101,7 +101,7 @@ export default function Settings() {
         </div>
         {isAdmin && (
           <button className="btn btn-primary" onClick={saveAll} disabled={saving}>
-            {saving ? 'Salvando…' : '\U0001f4be Salvar tudo'}
+            {saving ? 'Salvando…' : '💾 Salvar tudo'}
           </button>
         )}
       </div>
@@ -117,8 +117,9 @@ export default function Settings() {
         </div>
       )}
 
+      {/* Plano */}
       <div className="card" style={{marginBottom:16, padding:16}}>
-        <div style={{fontWeight:700, fontSize:14, marginBottom:10}}>\U0001f4cb Plano atual</div>
+        <div style={{fontWeight:700, fontSize:14, marginBottom:10}}>📋 Plano atual</div>
         <div style={{display:'flex', gap:24, flexWrap:'wrap', alignItems:'center'}}>
           <div>
             <div style={{fontSize:11, color:'var(--muted)', marginBottom:2}}>Plano</div>
@@ -134,15 +135,12 @@ export default function Settings() {
               </div>
             </div>
           )}
-          <div>
-            <div style={{fontSize:11, color:'var(--muted)', marginBottom:2}}>ID da empresa</div>
-            <div style={{fontSize:11, color:'var(--muted)', fontFamily:'monospace'}}>{company?.id}</div>
-          </div>
         </div>
       </div>
 
+      {/* Dados da empresa */}
       <div className="card" style={{marginBottom:16, padding:16}}>
-        <div style={{fontWeight:700, fontSize:14, marginBottom:14}}>\U0001f3e2 Dados da empresa</div>
+        <div style={{fontWeight:700, fontSize:14, marginBottom:14}}>🏢 Dados da empresa</div>
         <form onSubmit={saveName} style={{display:'flex', gap:8, alignItems:'flex-end', flexWrap:'wrap'}}>
           <label style={{flex:1, minWidth:200}}>
             <div style={{fontSize:12, color:'var(--muted)', marginBottom:4}}>Nome da empresa</div>
@@ -155,20 +153,15 @@ export default function Settings() {
             </button>
           )}
         </form>
-        <div style={{marginTop:12, display:'flex', gap:20, flexWrap:'wrap'}}>
-          <div>
-            <div style={{fontSize:11, color:'var(--muted)'}}>Usuário</div>
-            <div style={{fontSize:13}}>{user?.name} · {user?.email}</div>
-          </div>
-          <div>
-            <div style={{fontSize:11, color:'var(--muted)'}}>Função</div>
-            <div style={{fontSize:13, fontWeight:600, textTransform:'capitalize'}}>{role}</div>
-          </div>
+        <div style={{marginTop:12}}>
+          <div style={{fontSize:11, color:'var(--muted)'}}>Usuário logado</div>
+          <div style={{fontSize:13}}>{user?.name} · {user?.email} · <span style={{textTransform:'capitalize', fontWeight:600}}>{role}</span></div>
         </div>
       </div>
 
+      {/* Segmentos */}
       <div className="card" style={{marginBottom:16, padding:16}}>
-        <div style={{fontWeight:700, fontSize:14, marginBottom:4}}>\U0001f5c2️ Segmentos do funil</div>
+        <div style={{fontWeight:700, fontSize:14, marginBottom:4}}>🗂️ Segmentos do funil</div>
         <div style={{fontSize:12, color:'var(--muted)', marginBottom:14}}>
           Categorias de leads. Cada segmento pode ter seus próprios planos.
         </div>
@@ -209,8 +202,9 @@ export default function Settings() {
         )}
       </div>
 
+      {/* WhatsApp */}
       <div className="card" style={{marginBottom:16, padding:16}}>
-        <div style={{fontWeight:700, fontSize:14, marginBottom:4}}>\U0001f4f1 WhatsApp (Evolution API)</div>
+        <div style={{fontWeight:700, fontSize:14, marginBottom:4}}>📱 WhatsApp (Evolution API)</div>
         <div style={{fontSize:12, color:'var(--muted)', marginBottom:14}}>
           Configure sua instância própria da Evolution API para integração com WhatsApp.
         </div>
@@ -239,7 +233,7 @@ export default function Settings() {
             <div style={{display:'flex', gap:10, alignItems:'center', flexWrap:'wrap'}}>
               <button className="btn btn-ghost" style={{fontSize:13}} onClick={testWhatsapp}
                 disabled={testingWa || !wa.whatsapp_api_url}>
-                {testingWa ? '⏳ Testando…' : '\U0001f50c Testar conexão'}
+                {testingWa ? '⏳ Testando…' : '🔌 Testar conexão'}
               </button>
               {waStatus && (
                 <span style={{fontSize:13, color: waStatus.connected ? 'var(--success)' : 'var(--warning)'}}>
