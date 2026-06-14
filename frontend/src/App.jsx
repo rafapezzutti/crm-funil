@@ -46,4 +46,11 @@ export default function App() {
           <Route path="/comissoes"     element={<PrivateRoute><Shell><Comissoes /></Shell></PrivateRoute>} />
           <Route path="/configuracoes" element={<PrivateRoute><Shell><Settings /></Shell></PrivateRoute>} />
           <Route path="/avaliacao/:token"  element={<FillAssessment />} />
-          
+          <Route path="/forgot-password"  element={<ForgotPassword />} />
+          <Route path="/reset-password"   element={<ResetPassword />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </AuthProvider>
+    </BrowserRouter>
+  );
+}

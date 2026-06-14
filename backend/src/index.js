@@ -23,7 +23,6 @@ app.use(helmet());
 
 const allowedOrigins = [process.env.FRONTEND_URL || 'http://localhost:5173'];
 app.use((req, res, next) => {
-  // Sync de prospecção é protegido por token — permite qualquer origin
   if (req.path.startsWith('/api/leads/prospecting-sync')) {
     return cors({ origin: true, credentials: false })(req, res, next);
   }
@@ -55,7 +54,7 @@ app.use('/api/assessments', assessmentRoutes);
 app.use('/api/whatsapp',    whatsappRoutes);
 app.use('/api/company',     companyRoutes);
 
-// ── Setup endpoint (força criação das tabelas) ────────────────────────────────
+// ── Setup endpoint ────────────────────────────────────────────────────────────
 app.get('/api/setup', async (req, res) => {
   try {
     const force = req.query.force === 'true';
@@ -84,4 +83,9 @@ app.listen(PORT, async () => {
   } catch (e) {
     console.error('❌  Schema error:', e.message);
   }
-  st
+  startSyncScheduler();
+});
+
+function startSyncScheduler() {
+  // Sync com CRMs externos desativado
+}
