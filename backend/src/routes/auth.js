@@ -7,14 +7,12 @@ const { Resend } = require('resend');
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-// Tabela de eventos de login (painel de atividade no Master) — autocria
 sql`CREATE TABLE IF NOT EXISTS login_events (
   id BIGSERIAL PRIMARY KEY, user_id INTEGER, user_name TEXT, user_role TEXT, ip TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 )`.catch(() => {});
 sql`CREATE INDEX IF NOT EXISTS idx_login_events_created ON login_events(created_at DESC)`.catch(() => {});
 
-// Helpers
 function makeSlug(name) {
   return name.toLowerCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -30,8 +28,7 @@ function signToken(userId, companyId, role) {
   );
 }
 
-// ── POST /api/auth/register ───────────────────────
-// Cria usuário + empresa ao mesmo tempo
+// POST /api/auth/register
 router.post('/register', async (req, res) => {
   const { name, email, password, companyName, segment } = req.body;
   if (!name || !email || !password || !companyName) {
@@ -41,38 +38,32 @@ router.post('/register', async (req, res) => {
     return res.status(400).json({ error: 'Senha deve ter ao menos 6 caracteres.' });
   }
   try {
-    // Check email already exists
     const existing = await sql`SELECT id FROM users WHERE email = ${email.toLowerCase()}`;
     if (existing.length > 0) {
       return res.status(409).json({ error: 'E-mail já cadastrado.' });
     }
     const hash = await bcrypt.hash(password, 10);
 
-    // Create user
     const [user] = await sql`
       INSERT INTO users (email, password_hash, name)
       VALUES (${email.toLowerCase()}, ${hash}, ${name})
       RETURNING id, email, name`;
 
-    // Create company with trial
     const slug = makeSlug(companyName);
     const [company] = await sql`
       INSERT INTO companies (name, slug, plan, trial_ends_at)
       VALUES (${companyName}, ${slug}, 'trial', NOW() + INTERVAL '14 days')
       RETURNING id, name, slug, plan, trial_ends_at`;
 
-    // Add user as admin
     await sql`
       INSERT INTO company_members (company_id, user_id, role)
       VALUES (${company.id}, ${user.id}, 'admin')`;
 
-    // Create seller_profile for admin
     await sql`
       INSERT INTO seller_profiles (user_id, company_id, ativo)
       VALUES (${user.id}, ${company.id}, true)
       ON CONFLICT (user_id) DO NOTHING`;
 
-    // Seed default plans based on segment
     const seg = segment || 'saude';
     const defaultPlans = {
       saude:    [{ nome:'Clínica Básica', valor:79.90 }, { nome:'Clínica Pro', valor:149.90 }],
@@ -101,7 +92,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// ── POST /api/auth/login ─────────────────────────
+// POST /api/auth/login
 router.post('/login', async (req, res) => {
   const { email, password, companyId } = req.body;
   if (!email || !password) {
@@ -114,7 +105,6 @@ router.post('/login', async (req, res) => {
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) return res.status(401).json({ error: 'E-mail ou senha incorretos.' });
 
-    // Get companies this user belongs to (inclui plan/trial)
     const memberships = await sql`
       SELECT cm.company_id, cm.role, c.name, c.slug, c.plan, c.trial_ends_at, c.status
       FROM company_members cm
@@ -126,7 +116,6 @@ router.post('/login', async (req, res) => {
       return res.status(403).json({ error: 'Usuário não pertence a nenhuma empresa.' });
     }
 
-    // If companyId specified, use it; otherwise use first
     let membership = companyId
       ? memberships.find(m => m.company_id === companyId)
       : memberships[0];
@@ -153,17 +142,16 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// ── POST /api/auth/forgot-password ───────────────
+// POST /api/auth/forgot-password
 router.post('/forgot-password', async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'E-mail obrigatório.' });
   try {
     const [user] = await sql`SELECT id, name FROM users WHERE email = ${email.toLowerCase()}`;
-    // Always return 200 to avoid user enumeration
     if (!user) return res.json({ message: 'Se o e-mail existir, você receberá um link de recuperação.' });
 
     const token   = crypto.randomBytes(32).toString('hex');
-    const expires = new Date(Date.now() + 3600_000); // 1h
+    const expires = new Date(Date.now() + 3600_000);
     await sql`UPDATE users SET reset_token = ${token}, reset_expires = ${expires} WHERE id = ${user.id}`;
 
     const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
@@ -187,7 +175,7 @@ router.post('/forgot-password', async (req, res) => {
   }
 });
 
-// ── POST /api/auth/reset-password ────────────────
+// POST /api/auth/reset-password
 router.post('/reset-password', async (req, res) => {
   const { token, password } = req.body;
   if (!token || !password) return res.status(400).json({ error: 'Token e nova senha são obrigatórios.' });
@@ -207,7 +195,7 @@ router.post('/reset-password', async (req, res) => {
   }
 });
 
-// ── GET /api/auth/me ─────────────────────────────
+// GET /api/auth/me
 const auth = require('../middleware/auth');
 router.get('/me', auth, async (req, res) => {
   try {
@@ -222,8 +210,7 @@ router.get('/me', auth, async (req, res) => {
   }
 });
 
-// ── POST /api/auth/switch-company ─────────────────
-// Troca o contexto de empresa e retorna um novo token
+// POST /api/auth/switch-company
 router.post('/switch-company', auth, async (req, res) => {
   const { companyId } = req.body;
   if (!companyId) return res.status(400).json({ error: 'companyId obrigatório.' });

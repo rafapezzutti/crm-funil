@@ -30,25 +30,21 @@ export default function LeadModal({ lead: initial, onClose, onSaved }) {
   const [saving,   setSaving]  = useState(false);
   const [err,      setErr]     = useState('');
 
-  // Carrega tipos de CRM da empresa
   useEffect(() => {
     api.get('/company/crm-types')
       .then(r => { if (r.data?.length) setCrmOpts(r.data.map(t => t.value)); })
       .catch(() => {});
   }, []);
 
-  // Carrega planos quando CRM muda
   useEffect(() => {
     if (form.crm) api.get('/plans', { params:{ crm: form.crm }}).then(r => setPlans(r.data));
     else setPlans([]);
   }, [form.crm]);
 
-  // Carrega membros da empresa para o dropdown de responsável
   useEffect(() => {
     api.get('/admin/team')
       .then(r => {
         setTeam(r.data);
-        // Se vendedor, auto-seleciona a si mesmo e não permite mudar
         if (role === 'vendedor' && !initial?.responsavel_id) {
           const me = r.data.find(m => m.name === user?.name);
           if (me) setForm(f => ({...f, responsavel_id: me.id}));
@@ -92,7 +88,6 @@ export default function LeadModal({ lead: initial, onClose, onSaved }) {
         <div className="modal-body">
           {err && <div className="alert alert-high">{err}</div>}
 
-          {/* Identificação */}
           <div>
             <div className="section-title">Identificação</div>
             <div className="form-row form-row-2" style={{marginBottom:12}}>
@@ -141,12 +136,10 @@ export default function LeadModal({ lead: initial, onClose, onSaved }) {
 
           <hr className="divider" />
 
-          {/* Responsável */}
           <div className="form-group">
             <label>👤 Responsável (Vendedor)</label>
             {isVendedor ? (
-              <input value={user?.name || 'Você'} disabled
-                style={{opacity:.7, cursor:'not-allowed'}} />
+              <input value={user?.name || 'Você'} disabled style={{opacity:.7, cursor:'not-allowed'}} />
             ) : (
               <select value={form.responsavel_id} onChange={e => set('responsavel_id', e.target.value)}>
                 <option value="">— Sem responsável —</option>
@@ -161,7 +154,6 @@ export default function LeadModal({ lead: initial, onClose, onSaved }) {
 
           <hr className="divider" />
 
-          {/* Dados Comerciais */}
           <div>
             <div className="section-title">Dados Comerciais</div>
             <div className="form-row form-row-2" style={{marginBottom:12}}>
@@ -205,7 +197,6 @@ export default function LeadModal({ lead: initial, onClose, onSaved }) {
 
           <hr className="divider" />
 
-          {/* Próxima ação */}
           <div>
             <div className="section-title">Próxima Ação</div>
             <div className="form-row form-row-2">
@@ -234,4 +225,12 @@ export default function LeadModal({ lead: initial, onClose, onSaved }) {
         </div>
 
         <div className="modal-footer">
-          <button className="btn btn-ghost" onClick={onCl
+          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={save} disabled={saving}>
+            {saving ? '⏳ Salvando…' : editing ? 'Salvar Alterações' : 'Criar Lead'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

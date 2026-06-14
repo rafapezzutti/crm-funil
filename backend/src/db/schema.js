@@ -1,7 +1,5 @@
 /**
  * CRM Pezzutti — Schema Auto-Setup
- * company_id, responsavel_id, user_id, uploaded_by = UUID (todos ids são UUID neste projeto)
- * Drop explícito por nome para garantir recriação correta
  */
 const { sql } = require('../config/db');
 
@@ -72,7 +70,6 @@ async function ensureSchema(force = false) {
       updated_at            TIMESTAMPTZ  DEFAULT NOW()
     )`));
 
-  // Migração segura: adiciona colunas se a tabela já existir
   results.push(await runSafe('leads_migration_whatsapp', () => sql`
     ALTER TABLE leads
       ADD COLUMN IF NOT EXISTS ultimo_whatsapp_at TIMESTAMPTZ,
@@ -135,7 +132,6 @@ async function ensureSchema(force = false) {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )`));
 
-
   results.push(await runSafe('seller_profiles', () => sql`
     CREATE TABLE IF NOT EXISTS seller_profiles (
       id         SERIAL PRIMARY KEY,
@@ -161,7 +157,6 @@ async function ensureSchema(force = false) {
 
   await runSafe('seed_plans', () => seedPlans());
 
-  // Configurações por empresa (WhatsApp + CRM types)
   results.push(await runSafe('company_settings', () => sql`
     CREATE TABLE IF NOT EXISTS company_settings (
       company_id         UUID PRIMARY KEY,
@@ -172,18 +167,15 @@ async function ensureSchema(force = false) {
       updated_at         TIMESTAMPTZ  DEFAULT NOW()
     )`));
 
-  // Colunas trial/plan em companies
   results.push(await runSafe('companies_trial', () => sql`
     ALTER TABLE companies
       ADD COLUMN IF NOT EXISTS plan          VARCHAR(20)  DEFAULT 'trial',
       ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ DEFAULT NOW() + INTERVAL '14 days',
       ADD COLUMN IF NOT EXISTS status        VARCHAR(20)  DEFAULT 'active'`));
 
-  // Coluna data_producao (quando o lead entrou em Produção)
   results.push(await runSafe('leads_migration_data_producao', () => sql`
     ALTER TABLE leads ADD COLUMN IF NOT EXISTS data_producao TIMESTAMPTZ`));
 
-  // Atribuir leads sem dono ao admin da empresa
   await runSafe('assign_orphan_leads', () => sql`
     UPDATE leads l
     SET responsavel_id = (
@@ -205,4 +197,24 @@ async function seedPlans() {
   const cos = await sql`SELECT id FROM companies LIMIT 1`;
   if (!cos.length) return;
   const companyId = cos[0].id;
-  const 
+  const existing  = await sql`SELECT id FROM plans WHERE company_id = ${companyId} LIMIT 1`;
+  if (existing.length) return;
+
+  const defaults = [
+    { crm:'esportes', nome:'Autônomo',    valor: 49.90 },
+    { crm:'esportes', nome:'Academia',    valor: 79.90 },
+    { crm:'spa',      nome:'Autônomo',    valor: 49.90 },
+    { crm:'spa',      nome:'Clínica',     valor: 79.90 },
+    { crm:'saude',    nome:'Clínica',     valor: 79.90 },
+    { crm:'pet',      nome:'Pet / Hotel', valor: 49.90 },
+    { crm:'pet',      nome:'Pet + Vet',   valor: 79.90 },
+  ];
+  for (const p of defaults) {
+    await sql`
+      INSERT INTO plans (company_id, crm, nome, valor)
+      VALUES (${companyId}, ${p.crm}, ${p.nome}, ${p.valor})
+      ON CONFLICT DO NOTHING`;
+  }
+}
+
+module.exports = { ensureSchema };

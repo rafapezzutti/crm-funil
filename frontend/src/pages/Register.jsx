@@ -15,7 +15,7 @@ const SEGMENTS = [
 export default function Register() {
   const { login }   = useAuth();
   const navigate    = useNavigate();
-  const [step, setStep]     = useState(1); // 1=dados, 2=segmento
+  const [step, setStep]     = useState(1);
   const [form, setForm]     = useState({ name:'', email:'', password:'', companyName:'', segment:'saude' });
   const [error, setError]   = useState('');
   const [loading, setLoading] = useState(false);
@@ -52,7 +52,6 @@ export default function Register() {
     <div className={styles.page}>
       <form className={styles.card} onSubmit={step === 1 ? nextStep : handleSubmit}>
 
-        {/* Logo */}
         <div style={{ textAlign:'center', marginBottom:4 }}>
           <img src="/logo-pfunil.svg" alt="P. Funil" style={{ height:52, objectFit:'contain' }} />
         </div>

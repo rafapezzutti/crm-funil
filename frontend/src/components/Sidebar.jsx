@@ -24,7 +24,7 @@ export default function Sidebar() {
   const { user, logout, role, company } = useAuth();
 
   const [open, setOpen] = useState({});
-  const isOpen = (l) => open[l] === true; // recolhido por padrão
+  const isOpen = (l) => open[l] === true;
   const toggle = (l) => setOpen(p => ({ ...p, [l]: !p[l] }));
 
   const groups = GROUPS
@@ -107,4 +107,10 @@ export default function Sidebar() {
         <div style={{ fontSize:10, color:'var(--muted)', marginBottom:8, textTransform:'uppercase', letterSpacing:'.5px' }}>
           {role === 'vendedor' ? 'Vendedor' : 'Admin'}
         </div>
-        <button className="btn btn-ghost btn-s
+        <button className="btn btn-ghost btn-sm" onClick={logout} style={{width:'100%'}}>
+          Sair
+        </button>
+      </div>
+    </aside>
+  );
+}
