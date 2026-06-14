@@ -187,6 +187,37 @@ async function ensureSchema(force = false) {
     WHERE l.responsavel_id IS NULL
   `);
 
+
+  // Tabela de robôs configuráveis por empresa
+  results.push(await runSafe('robots', () => sql`
+    CREATE TABLE IF NOT EXISTS robots (
+      id                SERIAL PRIMARY KEY,
+      company_id        UUID         NOT NULL,
+      name              VARCHAR(100) NOT NULL,
+      description       TEXT,
+      tipo              VARCHAR(50)  NOT NULL DEFAULT 'custom',
+      trigger_type      VARCHAR(20)  DEFAULT 'cron',
+      cron_expr         VARCHAR(50),
+      event_trigger     VARCHAR(50),
+      prompt_template   TEXT,
+      whatsapp_template TEXT,
+      ativo             BOOLEAN      DEFAULT true,
+      updated_at        TIMESTAMPTZ  DEFAULT NOW(),
+      created_at        TIMESTAMPTZ  DEFAULT NOW()
+    )`));
+
+  // Logs de execução de robôs
+  results.push(await runSafe('robot_logs', () => sql`
+    CREATE TABLE IF NOT EXISTS robot_logs (
+      id          SERIAL PRIMARY KEY,
+      robot_id    INT          NOT NULL,
+      company_id  UUID         NOT NULL,
+      status      VARCHAR(20)  DEFAULT 'ok',
+      output      TEXT,
+      duration_ms INT,
+      created_at  TIMESTAMPTZ  DEFAULT NOW()
+    )`));
+
   const ok  = results.filter(r => r.ok).length;
   const err = results.filter(r => !r.ok).length;
   console.log(`[schema] ${ok} OK, ${err} erros`);

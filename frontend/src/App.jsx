@@ -14,6 +14,7 @@ import Register        from './pages/Register';
 import ForgotPassword  from './pages/ForgotPassword';
 import ResetPassword   from './pages/ResetPassword';
 import Settings        from './pages/Settings';
+import Robos           from './pages/Robos';
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -45,6 +46,7 @@ export default function App() {
           <Route path="/admin" element={<PrivateRoute><Shell><Admin /></Shell></PrivateRoute>} />
           <Route path="/comissoes"     element={<PrivateRoute><Shell><Comissoes /></Shell></PrivateRoute>} />
           <Route path="/configuracoes" element={<PrivateRoute><Shell><Settings /></Shell></PrivateRoute>} />
+          <Route path="/robos"          element={<PrivateRoute><Shell><Robos /></Shell></PrivateRoute>} />
           <Route path="/avaliacao/:token"  element={<FillAssessment />} />
           <Route path="/forgot-password"  element={<ForgotPassword />} />
           <Route path="/reset-password"   element={<ResetPassword />} />
