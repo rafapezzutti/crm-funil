@@ -4,7 +4,8 @@ const cors      = require('cors');
 const helmet    = require('helmet');
 const rateLimit = require('express-rate-limit');
 
-const { ensureSchema } = require('./db/schema');
+const { ensureSchema }       = require('./db/schema');
+const { startCronScheduler } = require('./services/cronScheduler');
 const authRoutes       = require('./routes/auth');
 const leadRoutes       = require('./routes/leads');
 const planRoutes       = require('./routes/plans');
@@ -87,9 +88,7 @@ app.listen(PORT, async () => {
   } catch (e) {
     console.error('❌  Schema error:', e.message);
   }
-  startSyncScheduler();
+  startCronScheduler();
 });
 
-function startSyncScheduler() {
-  // Sync com CRMs externos desativado
-}
+
