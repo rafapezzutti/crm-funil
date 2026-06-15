@@ -39,14 +39,12 @@ export default function Sidebar() {
     .map(g => ({ ...g, items: g.items.filter(i => !i.roles || i.roles.includes(role)) }))
     .filter(g => g.items.length);
 
-  // Fechar dropdown ao clicar fora
   useEffect(() => {
     function handle(e) { if (impRef.current && !impRef.current.contains(e.target)) setImpOpen(false); }
     document.addEventListener('mousedown', handle);
     return () => document.removeEventListener('mousedown', handle);
   }, []);
 
-  // Carregar empresas quando abre o dropdown
   useEffect(() => {
     if (impOpen && role === 'master' && allCompanies.length === 0) {
       api.get('/master/companies').then(r => setAll(r.data)).catch(() => {});
@@ -75,45 +73,56 @@ export default function Sidebar() {
         </div>
       )}
 
-      {/* Logo + empresa */}
-      <div className="sidebar-logo" style={{ display:'flex', alignItems:'center', gap:10 }}>
-        <img src="/logo-icon.svg" alt="P. Soluções" style={{ height:36, width:36, objectFit:'contain', flexShrink:0 }} />
-        <div style={{ flex:1, minWidth:0 }}>
-          <h1 style={{ margin:0, fontSize:14, fontWeight:700, lineHeight:1.2, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
-            {company?.name || 'P. Funil'}
-          </h1>
-          <span style={{ fontSize:10, color:'var(--muted)' }}>Gestão Comercial</span>
+      {/* Logo + nome da empresa */}
+      <div className="sidebar-logo">
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          <img src="/logo-icon.svg" alt="P. Soluções"
+            style={{ height:36, width:36, objectFit:'contain', flexShrink:0 }} />
+          <div style={{ flex:1, minWidth:0 }}>
+            <h1 style={{ margin:0, fontSize:14, fontWeight:700, lineHeight:1.2,
+              whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+              {company?.name || 'P. Funil'}
+            </h1>
+            <span style={{ fontSize:10, color:'var(--muted)' }}>Gestão Comercial</span>
+          </div>
         </div>
 
-        {/* Dropdown de impersonation para master */}
+        {/* Botão entrar como cliente — logo abaixo do nome da empresa */}
         {role === 'master' && (
-          <div ref={impRef} style={{ position:'relative', flexShrink:0 }}>
+          <div ref={impRef} style={{ position:'relative', marginTop:10 }}>
             <button
               onClick={() => setImpOpen(o => !o)}
-              title="Entrar como cliente"
               style={{
-                background: impersonating ? 'rgba(239,68,68,.3)' : 'var(--card2)',
-                border:'1px solid var(--border)', borderRadius:6,
-                width:28, height:28, cursor:'pointer', fontSize:14, display:'flex',
-                alignItems:'center', justifyContent:'center',
+                width:'100%', display:'flex', alignItems:'center', gap:8,
+                padding:'7px 10px', borderRadius:8, cursor:'pointer', fontSize:12,
+                background: impersonating ? 'rgba(239,68,68,.15)' : 'var(--card2)',
+                border:'1px solid ' + (impersonating ? 'rgba(239,68,68,.35)' : 'var(--border)'),
+                color: impersonating ? '#f87171' : 'var(--text)',
+                fontWeight:600,
               }}
-            >🎭</button>
+            >
+              <span>🎭</span>
+              <span style={{ flex:1, textAlign:'left' }}>
+                {impersonating ? 'Sair da visualização' : 'Entrar como cliente'}
+              </span>
+              <span style={{ fontSize:9, opacity:.6 }}>{impOpen ? '▾' : '▸'}</span>
+            </button>
 
             {impOpen && (
               <div style={{
-                position:'absolute', top:'calc(100% + 8px)', right:0, zIndex:999,
+                position:'absolute', top:'calc(100% + 4px)', left:0, right:0, zIndex:999,
                 background:'var(--card)', border:'1px solid var(--border)',
-                borderRadius:10, width:260, boxShadow:'0 8px 30px rgba(0,0,0,.4)',
+                borderRadius:10, boxShadow:'0 8px 30px rgba(0,0,0,.4)',
               }}>
                 <div style={{ padding:'10px 12px', borderBottom:'1px solid var(--border)', fontSize:12, fontWeight:600 }}>
-                  🎭 Entrar como cliente
+                  🎭 Selecione a empresa
                 </div>
                 <div style={{ padding:'8px 10px' }}>
                   <input
                     value={compSearch}
                     onChange={e => setCompSearch(e.target.value)}
                     placeholder="Buscar empresa…"
-                    style={{ width:'100%', fontSize:12, padding:'6px 8px', borderRadius:6 }}
+                    style={{ width:'100%', boxSizing:'border-box', fontSize:12, padding:'6px 8px', borderRadius:6 }}
                     autoFocus
                   />
                 </div>
@@ -123,12 +132,12 @@ export default function Sidebar() {
                       {allCompanies.length === 0 ? 'Carregando…' : 'Nenhuma empresa encontrada'}
                     </div>
                   ) : filtered.map(c => (
-                    <button key={c.id} onClick={() => { impersonate(c.id); setImpOpen(false); }} style={{
-                      width:'100%', textAlign:'left', padding:'8px 10px', borderRadius:8,
-                      background:'none', border:'none', cursor:'pointer', display:'block',
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--card2)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                    <button key={c.id}
+                      onClick={() => { impersonate(c.id); setImpOpen(false); }}
+                      style={{ width:'100%', textAlign:'left', padding:'8px 10px', borderRadius:8,
+                        background:'none', border:'none', cursor:'pointer', display:'block' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--card2)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'none'}>
                       <div style={{ fontSize:13, fontWeight:600 }}>{c.name}</div>
                       <div style={{ fontSize:10, color:'var(--muted)', textTransform:'uppercase' }}>
                         {c.plan} · {c.total_leads} leads
@@ -156,7 +165,8 @@ export default function Sidebar() {
         {groups.map(g => (
           <div key={g.label}>
             <button className="nav-section" onClick={() => toggle(g.label)}
-              style={{ display:'flex', alignItems:'center', justifyContent:'space-between', width:'100%', background:'none', border:'none', cursor:'pointer' }}>
+              style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+                width:'100%', background:'none', border:'none', cursor:'pointer' }}>
               <span>{g.label}</span>
               <span style={{ fontSize:9, opacity:.6 }}>{isOpen(g.label) ? '▾' : '▸'}</span>
             </button>
@@ -171,7 +181,8 @@ export default function Sidebar() {
           </div>
         ))}
         {role === 'vendedor' && (
-          <div style={{ margin:'12px 8px 0', padding:'8px 12px', background:'rgba(31,111,235,.1)', borderRadius:'var(--radius)', fontSize:11, color:'var(--accent)' }}>
+          <div style={{ margin:'12px 8px 0', padding:'8px 12px', background:'rgba(31,111,235,.1)',
+            borderRadius:'var(--radius)', fontSize:11, color:'var(--accent)' }}>
             👤 Você está vendo apenas seus leads
           </div>
         )}
@@ -183,7 +194,9 @@ export default function Sidebar() {
         if (!trialEnd || company?.plan !== 'trial') return null;
         const dias = Math.ceil((new Date(trialEnd) - Date.now()) / 86400000);
         if (dias <= 0) return (
-          <div style={{ margin:'8px 8px 0', padding:'10px 12px', background:'rgba(239,68,68,.15)', borderRadius:'var(--radius)', border:'1px solid rgba(239,68,68,.3)', fontSize:11 }}>
+          <div style={{ margin:'8px 8px 0', padding:'10px 12px',
+            background:'rgba(239,68,68,.15)', borderRadius:'var(--radius)',
+            border:'1px solid rgba(239,68,68,.3)', fontSize:11 }}>
             <div style={{ color:'#f87171', fontWeight:700 }}>⚠️ Trial expirado</div>
             <div style={{ color:'var(--muted)', marginTop:2 }}>Entre em contato para continuar.</div>
           </div>
@@ -192,7 +205,8 @@ export default function Sidebar() {
         const cor = dias <= 3 ? 'rgba(239,68,68,.15)' : 'rgba(251,191,36,.1)';
         const txt = dias <= 3 ? '#f87171' : 'var(--warning)';
         return (
-          <div style={{ margin:'8px 8px 0', padding:'10px 12px', background:cor, borderRadius:'var(--radius)', border:'1px solid ' + txt + '40', fontSize:11 }}>
+          <div style={{ margin:'8px 8px 0', padding:'10px 12px', background:cor,
+            borderRadius:'var(--radius)', border:'1px solid ' + txt + '40', fontSize:11 }}>
             <div style={{ color:txt, fontWeight:700 }}>⏳ {dias} dia{dias!==1?'s':''} de trial</div>
             <div style={{ color:'var(--muted)', marginTop:2 }}>Fale com a gente para assinar.</div>
           </div>

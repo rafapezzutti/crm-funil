@@ -14,10 +14,9 @@ export function AuthProvider({ children }) {
   const [companies, setCompanies] = useState([]);
   const [loading,   setLoading]   = useState(true);
 
-  // Impersonation state
-  const [impersonating,    setImpersonating]    = useState(false);
-  const [originalToken,    setOriginalToken]    = useState(null);
-  const [originalCompany,  setOriginalCompany]  = useState(null);
+  const [impersonating,   setImpersonating]   = useState(false);
+  const [originalToken,   setOriginalToken]   = useState(null);
+  const [originalCompany, setOriginalCompany] = useState(null);
 
   function getRoleFromToken() {
     try {
@@ -33,10 +32,9 @@ export function AuthProvider({ children }) {
     const token = localStorage.getItem('token');
     if (!token) { setLoading(false); return; }
 
-    // Restore impersonation state across reload
-    const imp = localStorage.getItem('impersonating');
+    const imp     = localStorage.getItem('impersonating');
     const origTok = localStorage.getItem('originalToken');
-    const origComp = localStorage.getItem('originalCompany');
+    const origComp= localStorage.getItem('originalCompany');
     if (imp === 'true' && origTok) {
       setImpersonating(true);
       setOriginalToken(origTok);
@@ -47,11 +45,22 @@ export function AuthProvider({ children }) {
       .then(({ data }) => {
         setUser(data.user);
         setCompanies(data.companies);
-        const stored = localStorage.getItem('company');
-        const comp = stored
-          ? data.companies.find(c => c.id === JSON.parse(stored).id) || data.companies[0]
-          : data.companies[0];
+
+        // Prioridade: 1) companyId do JWT  2) id salvo no localStorage  3) empresa master  4) primeira
+        const payload  = decodeToken(token);
+        const jwtCompId = payload?.companyId;
+        const stored   = localStorage.getItem('company');
+        const storedId = stored ? JSON.parse(stored).id : null;
+
+        const comp =
+          (jwtCompId && data.companies.find(c => c.id === jwtCompId)) ||
+          (storedId  && data.companies.find(c => c.id === storedId))  ||
+          data.companies.find(c => c.role === 'master')               ||
+          data.companies[0];
+
         setCompany(comp);
+        // Sincroniza localStorage com a empresa resolvida
+        if (comp) localStorage.setItem('company', JSON.stringify(comp));
       })
       .catch(() => {
         localStorage.removeItem('token');
@@ -61,7 +70,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   function login(token, userData, companyData, companiesList) {
-    localStorage.setItem('token', token);
+    localStorage.setItem('token',   token);
     localStorage.setItem('company', JSON.stringify(companyData));
     setUser(userData);
     setCompany(companyData);
@@ -80,12 +89,10 @@ export function AuthProvider({ children }) {
     }
   }
 
-  // Impersonate: master entra no contexto de outro cliente
   async function impersonate(targetCompanyId) {
     try {
       const { data } = await api.post('/master/impersonate', { companyId: targetCompanyId });
-      // Salva token original antes de trocar
-      const currentToken = localStorage.getItem('token');
+      const currentToken   = localStorage.getItem('token');
       const currentCompany = localStorage.getItem('company');
       localStorage.setItem('originalToken',   currentToken);
       localStorage.setItem('originalCompany', currentCompany);
@@ -98,9 +105,8 @@ export function AuthProvider({ children }) {
     }
   }
 
-  // Sai da impersonation, volta ao token original
   function exitImpersonation() {
-    const orig = localStorage.getItem('originalToken');
+    const orig     = localStorage.getItem('originalToken');
     const origComp = localStorage.getItem('originalCompany');
     if (!orig) return;
     localStorage.setItem('token', orig);

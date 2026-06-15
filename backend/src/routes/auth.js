@@ -118,7 +118,7 @@ router.post('/login', async (req, res) => {
 
     let membership = companyId
       ? memberships.find(m => m.company_id === companyId)
-      : memberships[0];
+      : (memberships.find(m => m.role === 'master') || memberships[0]);
     if (!membership) membership = memberships[0];
 
     const token = signToken(user.id, membership.company_id, membership.role);
@@ -201,7 +201,7 @@ router.get('/me', auth, async (req, res) => {
   try {
     const [user] = await sql`SELECT id, name, email FROM users WHERE id = ${req.userId}`;
     const memberships = await sql`
-      SELECT cm.company_id as id, cm.role, c.name, c.slug
+      SELECT cm.company_id as id, cm.role, c.name, c.slug, c.plan, c.trial_ends_at, c.status
       FROM company_members cm JOIN companies c ON c.id = cm.company_id
       WHERE cm.user_id = ${req.userId} ORDER BY c.name`;
     res.json({ user, companies: memberships, currentCompanyId: req.companyId });
