@@ -120,4 +120,28 @@ router.post('/impersonate', masterOnly, async (req, res) => {
   }
 });
 
+
+// PUT /api/master/companies/:id
+router.put('/companies/:id', masterOnly, async (req, res) => {
+  const { id } = req.params;
+  const { name, plan, status, trial_ends_at } = req.body;
+  try {
+    const [company] = await sql`
+      UPDATE companies
+      SET
+        name           = COALESCE(${name || null}, name),
+        plan           = COALESCE(${plan || null}, plan),
+        status         = COALESCE(${status || null}, status),
+        trial_ends_at  = CASE WHEN ${trial_ends_at !== undefined ? String(trial_ends_at) : null}::text IS NOT NULL
+                              THEN ${trial_ends_at || null}::timestamptz
+                              ELSE trial_ends_at END
+      WHERE id = ${id}
+      RETURNING id, name, slug, plan, status, trial_ends_at`;
+    if (!company) return res.status(404).json({ error: 'Empresa não encontrada.' });
+    res.json(company);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
