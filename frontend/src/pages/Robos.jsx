@@ -20,7 +20,15 @@ const EVENT_OPTS = [
   { value:'lead_closed',    label:'Lead fechado' },
   { value:'whatsapp_reply', label:'Resposta no WhatsApp' },
 ];
-const STATUS_COLOR = { ok:'var(--success)', erro:'var(--danger)', running:'var(--accent)' };
+const STATUS_COLOR = { ok:'var(--success)', erro:'var(--danger)', aviso:'var(--warning)', running:'var(--accent)' };
+
+function progressStep(pct) {
+  if (pct < 20) return '🔄 Aguardando Cowork...';
+  if (pct < 45) return '📊 Buscando dados do CRM...';
+  if (pct < 75) return '🤖 Processando com IA...';
+  if (pct < 95) return '💾 Finalizando resposta...';
+  return '✅ Concluído!';
+}
 
 function tipoLabel(v) { return TIPO_OPTS.find(t => t.value === v)?.label || v; }
 function triggerLabel(v) { return TRIGGER_OPTS.find(t => t.value === v)?.label || v; }
@@ -114,6 +122,7 @@ export default function Robos() {
   const [err,      setErr]      = useState('');
   const [msg,      setMsg]      = useState('');
   const [running,  setRunning]  = useState(null); // id do robô em execução
+  const [progress, setProgress] = useState(null); // { robot, pct, step, done, logStatus }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -123,6 +132,36 @@ export default function Robos() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Polling de progresso — roda enquanto o robô está na fila
+  useEffect(() => {
+    if (!progress || progress.done) return;
+    const interval = setInterval(async () => {
+      // Avança progress fake até 85%
+      setProgress(p => {
+        if (!p || p.done) return p;
+        const next = Math.min(85, p.pct + 2.5); // sobe ~2.5% a cada 3s → 85% em ~34s
+        return { ...p, pct: Math.round(next) };
+      });
+      // Verifica se robô saiu da fila
+      try {
+        const { data } = await api.get('/robots');
+        const robot = data.find(r => r.id === progress.robot.id);
+        if (robot && !robot.queued_at) {
+          // Busca último log para saber status
+          const { data: logItems } = await api.get('/robots/' + progress.robot.id + '/logs');
+          const latest = logItems[0];
+          const st = latest?.status || 'ok';
+          const stepMsg = st === 'ok' ? '✅ Concluído com sucesso!'
+                        : st === 'erro' ? '❌ Erro na execução'
+                        : '⚠️ Concluído com aviso';
+          setProgress(p => p ? { ...p, pct: 100, done: true, step: stepMsg, logStatus: st } : null);
+          load(); // atualiza lista de robôs
+        }
+      } catch { /* ignora */ }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [progress?.robot?.id, progress?.done]); // eslint-disable-line
 
   function openCreate() { setForm(EMPTY); setErr(''); setModal('create'); }
   function openEdit(r)  { setForm({ ...r }); setErr(''); setModal(r); }
@@ -164,8 +203,8 @@ export default function Robos() {
   async function runNow(r) {
     setRunning(r.id);
     try {
-      const { data } = await api.post('/robots/' + r.id + '/run');
-      setMsg('⏳ ' + data.message + ' Aguarde e recarregue os logs em alguns segundos.');
+      await api.post('/robots/' + r.id + '/run');
+      setProgress({ robot: r, pct: 10, step: null, done: false, logStatus: null });
     } catch (e) {
       setMsg('❌ ' + (e.response?.data?.error || 'Erro ao executar robô.'));
     } finally {
@@ -366,6 +405,87 @@ export default function Robos() {
               <button className="btn btn-primary" onClick={save} disabled={saving}>
                 {saving ? '⏳ Salvando…' : modal === 'create' ? 'Criar Robô' : 'Salvar'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de progresso */}
+      {progress && (
+        <div className="overlay" style={{ zIndex:1100 }}>
+          <div className="modal" style={{ maxWidth:420, padding:0, overflow:'hidden' }}>
+            {/* Header colorido */}
+            <div style={{
+              padding:'18px 24px 16px',
+              background: progress.done
+                ? (progress.logStatus === 'erro' ? 'rgba(239,68,68,.15)' : progress.logStatus === 'aviso' ? 'rgba(245,158,11,.15)' : 'rgba(16,185,129,.15)')
+                : 'rgba(99,102,241,.12)',
+              borderBottom:'1px solid var(--border)',
+            }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:4 }}>
+                <span style={{ fontSize:22 }}>🤖</span>
+                <div>
+                  <div style={{ fontWeight:700, fontSize:15 }}>{progress.robot.name}</div>
+                  <div style={{ fontSize:12, color:'var(--muted)' }}>Executando via Cowork</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding:'20px 24px 24px' }}>
+              {/* Barra de progresso */}
+              <div style={{ marginBottom:10 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
+                  <span style={{ fontSize:12, color:'var(--muted)' }}>Progresso</span>
+                  <span style={{ fontSize:13, fontWeight:700, color: progress.done
+                    ? (progress.logStatus === 'erro' ? 'var(--danger)' : progress.logStatus === 'aviso' ? 'var(--warning)' : 'var(--success)')
+                    : 'var(--accent)'
+                  }}>{progress.pct}%</span>
+                </div>
+                <div style={{ height:10, borderRadius:20, background:'var(--card2)', overflow:'hidden' }}>
+                  <div style={{
+                    height:'100%',
+                    width: progress.pct + '%',
+                    borderRadius:20,
+                    transition:'width 1s ease',
+                    background: progress.done
+                      ? (progress.logStatus === 'erro' ? 'var(--danger)' : progress.logStatus === 'aviso' ? 'var(--warning)' : 'var(--success)')
+                      : 'linear-gradient(90deg, var(--accent), #a78bfa)',
+                    boxShadow: progress.done ? 'none' : '0 0 12px rgba(99,102,241,.5)',
+                    animation: progress.done ? 'none' : 'pulse-bar 2s ease-in-out infinite',
+                  }} />
+                </div>
+              </div>
+
+              {/* Etapa atual */}
+              <div style={{
+                fontSize:13, color:'var(--muted)', textAlign:'center', marginTop:14,
+                minHeight:22,
+              }}>
+                {progress.step || progressStep(progress.pct)}
+              </div>
+
+              {/* Instrução quando aguardando */}
+              {!progress.done && (
+                <div style={{
+                  marginTop:16, padding:'10px 14px', borderRadius:8,
+                  background:'var(--card2)', fontSize:12, color:'var(--muted)',
+                  lineHeight:1.6,
+                }}>
+                  💡 O robô está sendo executado pelo <strong>Cowork</strong>. Esta tela atualiza automaticamente quando concluir.
+                </div>
+              )}
+
+              {/* Botão fechar (só quando concluído) */}
+              {progress.done && (
+                <button
+                  className="btn btn-primary"
+                  style={{ width:'100%', marginTop:18 }}
+                  onClick={() => { setProgress(null); }}
+                >
+                  Fechar
+                </button>
+              )}
             </div>
           </div>
         </div>

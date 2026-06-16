@@ -337,6 +337,10 @@ tr:hover td { background: var(--card2); }
 .close-btn:hover { background: var(--card2); color: var(--text); }
 .spinner { animation: spin 1s linear infinite; display:inline-block; }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse-bar {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.65; }
+}
 
 /* ── Score ─────────────────────────────────────────── */
 .score-muito_quente { color: #f85149; }
