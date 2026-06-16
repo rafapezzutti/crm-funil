@@ -210,6 +210,17 @@ export default function Robos() {
     catch { /* ignore */ }
   }
 
+  async function deleteRobot(r) {
+    if (!confirm('Excluir o robô "' + r.name + '"? Esta ação não pode ser desfeita.')) return;
+    try {
+      await api.delete('/robots/' + r.id);
+      setMsg('🗑️ Robô "' + r.name + '" excluído.');
+      load();
+    } catch (e) {
+      setMsg('❌ ' + (e.response?.data?.error || 'Erro ao excluir robô.'));
+    }
+  }
+
   async function runNow(r) {
     setRunning(r.id);
     try {
@@ -332,6 +343,9 @@ export default function Robos() {
                   <button className="btn btn-ghost" style={{ fontSize:12, padding:'5px 10px' }} onClick={() => openEdit(r)}>✏️ Editar</button>
                   <button className="btn btn-ghost" style={{ fontSize:12, padding:'5px 10px', color: r.ativo ? 'var(--warning)' : 'var(--success)' }} onClick={() => toggleAtivo(r)}>
                     {r.ativo ? '⏸ Pausar' : '▶️ Ativar'}
+                  </button>
+                  <button className="btn btn-ghost" style={{ fontSize:12, padding:'5px 10px', color:'var(--danger)' }} onClick={() => deleteRobot(r)}>
+                    🗑️ Excluir
                   </button>
                 </>}
               </div>
