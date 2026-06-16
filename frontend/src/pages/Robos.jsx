@@ -122,7 +122,7 @@ export default function Robos() {
   const [err,      setErr]      = useState('');
   const [msg,      setMsg]      = useState('');
   const [running,  setRunning]  = useState(null); // id do robô em execução
-  const [progress, setProgress] = useState(null); // { robot, pct, step, done, logStatus }
+  const [progress, setProgress] = useState(null); // { robot, pct, step, done, logStatus, startedAt }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -143,6 +143,16 @@ export default function Robos() {
         const next = Math.min(85, p.pct + 2.5); // sobe ~2.5% a cada 3s → 85% em ~34s
         return { ...p, pct: Math.round(next) };
       });
+      // Timeout de 10 min: exibe aviso mas mantém aberto
+      setProgress(p => {
+        if (!p || p.done) return p;
+        const elapsed = Date.now() - (p.startedAt || Date.now());
+        if (elapsed > 10 * 60 * 1000 && !p.timedOut) {
+          return { ...p, timedOut: true };
+        }
+        return p;
+      });
+
       // Verifica se robô saiu da fila
       try {
         const { data } = await api.get('/robots');
@@ -204,7 +214,7 @@ export default function Robos() {
     setRunning(r.id);
     try {
       await api.post('/robots/' + r.id + '/run');
-      setProgress({ robot: r, pct: 10, step: null, done: false, logStatus: null });
+      setProgress({ robot: r, pct: 10, step: null, done: false, logStatus: null, startedAt: Date.now() });
     } catch (e) {
       setMsg('❌ ' + (e.response?.data?.error || 'Erro ao executar robô.'));
     } finally {
@@ -466,13 +476,32 @@ export default function Robos() {
               </div>
 
               {/* Instrução quando aguardando */}
-              {!progress.done && (
+              {!progress.done && !progress.timedOut && (
                 <div style={{
                   marginTop:16, padding:'10px 14px', borderRadius:8,
                   background:'var(--card2)', fontSize:12, color:'var(--muted)',
                   lineHeight:1.6,
                 }}>
                   💡 O robô está sendo executado pelo <strong>Cowork</strong>. Esta tela atualiza automaticamente quando concluir.
+                </div>
+              )}
+              {/* Timeout: Cowork não respondeu */}
+              {!progress.done && progress.timedOut && (
+                <div style={{ marginTop:16 }}>
+                  <div style={{
+                    padding:'10px 14px', borderRadius:8, marginBottom:10,
+                    background:'rgba(245,158,11,.12)', fontSize:12, color:'var(--warning)',
+                    lineHeight:1.6,
+                  }}>
+                    ⏱️ O Cowork está demorando mais que o esperado. Verifique se a skill foi executada ou aguarde mais.
+                  </div>
+                  <button
+                    className="btn btn-ghost"
+                    style={{ width:'100%', fontSize:12 }}
+                    onClick={() => setProgress(null)}
+                  >
+                    Fechar (verificar logs manualmente)
+                  </button>
                 </div>
               )}
 
