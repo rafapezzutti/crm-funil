@@ -113,6 +113,7 @@ export default function Robos() {
   const [saving,   setSaving]   = useState(false);
   const [err,      setErr]      = useState('');
   const [msg,      setMsg]      = useState('');
+  const [running,  setRunning]  = useState(null); // id do robô em execução
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -158,6 +159,18 @@ export default function Robos() {
   async function toggleAtivo(r) {
     try { await api.put('/robots/' + r.id, { ...r, ativo: !r.ativo }); load(); }
     catch { /* ignore */ }
+  }
+
+  async function runNow(r) {
+    setRunning(r.id);
+    try {
+      const { data } = await api.post('/robots/' + r.id + '/run');
+      setMsg('⏳ ' + data.message + ' Aguarde e recarregue os logs em alguns segundos.');
+    } catch (e) {
+      setMsg('❌ ' + (e.response?.data?.error || 'Erro ao executar robô.'));
+    } finally {
+      setRunning(null);
+    }
   }
 
   const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
@@ -259,6 +272,14 @@ export default function Robos() {
               <div style={{ display:'flex', flexDirection:'column', gap:6, flexShrink:0 }}>
                 <button className="btn btn-ghost" style={{ fontSize:12, padding:'5px 10px' }} onClick={() => openLogs(r)}>📋 Logs</button>
                 {isAdmin && <>
+                  <button
+                    className="btn btn-primary"
+                    style={{ fontSize:12, padding:'5px 10px' }}
+                    onClick={() => runNow(r)}
+                    disabled={running === r.id}
+                  >
+                    {running === r.id ? '⏳ Rodando…' : '▶ Executar agora'}
+                  </button>
                   <button className="btn btn-ghost" style={{ fontSize:12, padding:'5px 10px' }} onClick={() => openEdit(r)}>✏️ Editar</button>
                   <button className="btn btn-ghost" style={{ fontSize:12, padding:'5px 10px', color: r.ativo ? 'var(--warning)' : 'var(--success)' }} onClick={() => toggleAtivo(r)}>
                     {r.ativo ? '⏸ Pausar' : '▶️ Ativar'}

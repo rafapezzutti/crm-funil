@@ -1,6 +1,7 @@
 const router  = require('express').Router();
 const auth    = require('../middleware/auth');
 const { sql } = require('../config/db');
+const { executeRobot } = require('../services/robotRunner');
 
 router.use(auth);
 
@@ -189,6 +190,25 @@ router.get('/:id/logs', async (req, res) => {
       ? await sql`SELECT * FROM robot_logs WHERE robot_id = ${req.params.id} ORDER BY created_at DESC LIMIT 50`
       : await sql`SELECT * FROM robot_logs WHERE robot_id = ${req.params.id} AND company_id = ${req.companyId} ORDER BY created_at DESC LIMIT 50`;
     res.json(logs);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/robots/:id/run — execução manual imediata ───────────────────────
+router.post('/:id/run', async (req, res) => {
+  if (!['admin','master'].includes(req.role)) return res.status(403).json({ error: 'Apenas admins.' });
+  try {
+    const isMaster = req.role === 'master';
+    const [robot] = isMaster
+      ? await sql`SELECT * FROM robots WHERE id = ${req.params.id} AND ativo = true`
+      : await sql`SELECT * FROM robots WHERE id = ${req.params.id} AND company_id = ${req.companyId} AND ativo = true`;
+
+    if (!robot) return res.status(404).json({ error: 'Robô não encontrado.' });
+
+    // Executa em background e retorna imediatamente
+    res.json({ ok: true, message: `Robô "${robot.name}" iniciado.` });
+    executeRobot(robot).catch(err => console.error('[run manual]', err.message));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
