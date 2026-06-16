@@ -237,14 +237,14 @@ router.post('/seed', async (req, res) => {
 router.post('/', async (req, res) => {
   if (!['admin','master'].includes(req.role)) return res.status(403).json({ error: 'Apenas admins.' });
   const { name, description, tipo, trigger_type, cron_expr, event_trigger, prompt_template, whatsapp_template } = req.body;
-  if (!name || !tipo) return res.status(400).json({ error: 'Nome e tipo são obrigatórios.' });
+  if (!name || !tipo) return res.status(400).json({ error: 'name e tipo são obrigatórios.' });
   try {
     const [robot] = await sql`
       INSERT INTO robots (company_id, name, description, tipo, trigger_type, cron_expr, event_trigger, prompt_template, whatsapp_template)
       VALUES (${req.companyId}, ${name}, ${description||null}, ${tipo}, ${trigger_type||'cron'},
               ${cron_expr||null}, ${event_trigger||null}, ${prompt_template||null}, ${whatsapp_template||null})
       RETURNING *`;
-    res.json(robot);
+    res.status(201).json(robot);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -252,24 +252,29 @@ router.post('/', async (req, res) => {
 
 // ── PUT /api/robots/:id ────────────────────────────────────────────────────────
 router.put('/:id', async (req, res) => {
-  if (!['admin','master'].includes(req.role)) return res.status(403).json({ error: 'Apenas admins.' });
+  const { id } = req.params;
   const { name, description, tipo, trigger_type, cron_expr, event_trigger, prompt_template, whatsapp_template, ativo } = req.body;
   try {
-    const isMaster = req.role === 'master';
-    const [robot] = isMaster
-      ? await sql`
-          UPDATE robots SET name=${name}, description=${description||null}, tipo=${tipo},
-            trigger_type=${trigger_type||'cron'}, cron_expr=${cron_expr||null},
-            event_trigger=${event_trigger||null}, prompt_template=${prompt_template||null},
-            whatsapp_template=${whatsapp_template||null}, ativo=${ativo !== false}, updated_at=NOW()
-          WHERE id = ${req.params.id} RETURNING *`
-      : await sql`
-          UPDATE robots SET name=${name}, description=${description||null}, tipo=${tipo},
-            trigger_type=${trigger_type||'cron'}, cron_expr=${cron_expr||null},
-            event_trigger=${event_trigger||null}, prompt_template=${prompt_template||null},
-            whatsapp_template=${whatsapp_template||null}, ativo=${ativo !== false}, updated_at=NOW()
-          WHERE id = ${req.params.id} AND company_id = ${req.companyId} RETURNING *`;
-    if (!robot) return res.status(404).json({ error: 'Robô não encontrado.' });
+    // master pode editar qualquer robô; admin só os seus
+    const [existing] = await sql`SELECT company_id FROM robots WHERE id = ${id}`;
+    if (!existing) return res.status(404).json({ error: 'Robô não encontrado.' });
+    if (req.role !== 'master' && existing.company_id !== req.companyId)
+      return res.status(403).json({ error: 'Sem permissão.' });
+
+    const [robot] = await sql`
+      UPDATE robots SET
+        name              = COALESCE(${name||null}, name),
+        description       = COALESCE(${description||null}, description),
+        tipo              = COALESCE(${tipo||null}, tipo),
+        trigger_type      = COALESCE(${trigger_type||null}, trigger_type),
+        cron_expr         = COALESCE(${cron_expr||null}, cron_expr),
+        event_trigger     = COALESCE(${event_trigger||null}, event_trigger),
+        prompt_template   = COALESCE(${prompt_template||null}, prompt_template),
+        whatsapp_template = COALESCE(${whatsapp_template||null}, whatsapp_template),
+        ativo             = COALESCE(${ativo !== undefined ? ativo : null}, ativo),
+        updated_at        = NOW()
+      WHERE id = ${id}
+      RETURNING *`;
     res.json(robot);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -278,25 +283,29 @@ router.put('/:id', async (req, res) => {
 
 // ── DELETE /api/robots/:id ─────────────────────────────────────────────────────
 router.delete('/:id', async (req, res) => {
-  if (!['admin','master'].includes(req.role)) return res.status(403).json({ error: 'Apenas admins.' });
-  const isMaster = req.role === 'master';
-  if (isMaster) {
-    await sql`UPDATE robots SET ativo = false WHERE id = ${req.params.id}`;
-  } else {
-    await sql`UPDATE robots SET ativo = false WHERE id = ${req.params.id} AND company_id = ${req.companyId}`;
+  const { id } = req.params;
+  try {
+    const [existing] = await sql`SELECT company_id FROM robots WHERE id = ${id}`;
+    if (!existing) return res.status(404).json({ error: 'Robô não encontrado.' });
+    if (req.role !== 'master' && existing.company_id !== req.companyId)
+      return res.status(403).json({ error: 'Sem permissão.' });
+
+    await sql`DELETE FROM robot_logs WHERE robot_id = ${id}`;
+    await sql`DELETE FROM robots WHERE id = ${id}`;
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-  res.json({ ok: true });
 });
 
-// ── POST /api/robots/:id/log ───────────────────────────────────────────────────
-router.post('/:id/log', async (req, res) => {
-  const { status, output, duration_ms } = req.body;
+// ── PUT /api/robots/:id/queue — enfileira para execução imediata ───────────────
+router.put('/:id/queue', async (req, res) => {
   try {
-    const [log] = await sql`
-      INSERT INTO robot_logs (robot_id, company_id, status, output, duration_ms)
-      VALUES (${req.params.id}, ${req.companyId}, ${status||'ok'}, ${output||null}, ${duration_ms||null})
-      RETURNING *`;
-    res.json(log);
+    const [robot] = await sql`
+      UPDATE robots SET queued_at = NOW() WHERE id = ${req.params.id}
+      RETURNING id, name, queued_at`;
+    if (!robot) return res.status(404).json({ error: 'Robô não encontrado.' });
+    res.json(robot);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -305,56 +314,28 @@ router.post('/:id/log', async (req, res) => {
 // ── GET /api/robots/:id/logs ───────────────────────────────────────────────────
 router.get('/:id/logs', async (req, res) => {
   try {
-    const isMaster = req.role === 'master';
-    const logs = isMaster
-      ? await sql`SELECT * FROM robot_logs WHERE robot_id = ${req.params.id} ORDER BY created_at DESC LIMIT 50`
-      : await sql`SELECT * FROM robot_logs WHERE robot_id = ${req.params.id} AND company_id = ${req.companyId} ORDER BY created_at DESC LIMIT 50`;
+    const logs = await sql`
+      SELECT * FROM robot_logs
+      WHERE robot_id = ${req.params.id}
+      ORDER BY created_at DESC
+      LIMIT 50`;
     res.json(logs);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// ── POST /api/robots/:id/run — enfileira para execução pelo Cowork ────────────
-router.post('/:id/run', async (req, res) => {
-  if (!['admin','master'].includes(req.role)) return res.status(403).json({ error: 'Apenas admins.' });
+// ── POST /api/robots/:id/log — Claude Cowork registra log (com JWT) ────────────
+router.post('/:id/log', async (req, res) => {
+  const { status, output, duration_ms } = req.body;
   try {
-    const isMaster = req.role === 'master';
-    const [robot] = isMaster
-      ? await sql`SELECT * FROM robots WHERE id = ${req.params.id} AND ativo = true`
-      : await sql`SELECT * FROM robots WHERE id = ${req.params.id} AND company_id = ${req.companyId} AND ativo = true`;
-
+    const [robot] = await sql`SELECT company_id FROM robots WHERE id = ${req.params.id}`;
     if (!robot) return res.status(404).json({ error: 'Robô não encontrado.' });
-
-    // Marca como enfileirado (Cowork vai buscar e executar)
-    await sql`UPDATE robots SET queued_at = NOW() WHERE id = ${robot.id}`;
-    await sql`
-      INSERT INTO robot_logs (robot_id, company_id, status, output)
-      VALUES (${robot.id}, ${robot.company_id}, 'queued', 'Aguardando execução pelo Cowork…')`;
-
-    res.json({ ok: true, message: `Robô "${robot.name}" enfileirado. O Cowork vai executar em instantes.` });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── GET /api/robots/run-due ────────────────────────────────────────────────────
-router.get('/run-due', async (req, res) => {
-  const token = req.headers['x-robot-token'];
-  if (!token || token !== process.env.ROBOT_SECRET) {
-    return res.status(401).json({ error: 'Token inválido.' });
-  }
-  try {
-    const robots = await sql`
-      SELECT r.*, c.name AS company_name,
-        cs.whatsapp_api_url, cs.whatsapp_api_token, cs.whatsapp_instance,
-        (SELECT created_at FROM robot_logs l WHERE l.robot_id = r.id ORDER BY created_at DESC LIMIT 1) AS last_run_at
-      FROM robots r
-      JOIN companies c ON c.id = r.company_id
-      LEFT JOIN company_settings cs ON cs.company_id = r.company_id
-      WHERE r.ativo = true AND r.trigger_type IN ('cron', 'ambos')
-      ORDER BY r.company_id, r.created_at`;
-    res.json(robots);
+    const [log] = await sql`
+      INSERT INTO robot_logs (robot_id, company_id, status, output, duration_ms)
+      VALUES (${req.params.id}, ${robot.company_id}, ${status||'ok'}, ${output||null}, ${duration_ms||null})
+      RETURNING *`;
+    res.json(log);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
