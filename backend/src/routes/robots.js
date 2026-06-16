@@ -2,6 +2,127 @@ const router  = require('express').Router();
 const auth    = require('../middleware/auth');
 const { sql } = require('../config/db');
 
+// Helper: valida ROBOT_SECRET (usado nos endpoints do Cowork, sem JWT)
+function robotAuth(req, res, next) {
+  const token = req.headers['x-robot-token'];
+  if (!token || token !== process.env.ROBOT_SECRET) {
+    return res.status(401).json({ error: 'Token inválido.' });
+  }
+  next();
+}
+
+// ── Endpoints do Cowork (sem JWT, apenas ROBOT_SECRET) ─────────────────────────
+
+// GET /api/robots/queued — fila para o Cowork executar
+router.get('/queued', robotAuth, async (req, res) => {
+  try {
+    const robots = await sql`
+      SELECT r.*, c.name AS company_name
+      FROM robots r
+      JOIN companies c ON c.id = r.company_id
+      WHERE r.queued_at IS NOT NULL AND r.ativo = true
+      ORDER BY r.queued_at ASC`;
+    res.json(robots);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/robots/:id/queued — Cowork limpa a fila após executar
+router.delete('/:id/queued', robotAuth, async (req, res) => {
+  try {
+    await sql`UPDATE robots SET queued_at = NULL WHERE id = ${req.params.id}`;
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/robots/:id/log-cowork — Cowork registra resultado (sem JWT)
+router.post('/:id/log-cowork', robotAuth, async (req, res) => {
+  const { status, output, duration_ms } = req.body;
+  try {
+    const [robot] = await sql`SELECT company_id FROM robots WHERE id = ${req.params.id}`;
+    if (!robot) return res.status(404).json({ error: 'Robô não encontrado.' });
+    const [log] = await sql`
+      INSERT INTO robot_logs (robot_id, company_id, status, output, duration_ms)
+      VALUES (${req.params.id}, ${robot.company_id}, ${status||'ok'}, ${output||null}, ${duration_ms||null})
+      RETURNING *`;
+    await sql`UPDATE robots SET updated_at = NOW() WHERE id = ${req.params.id}`;
+    res.json(log);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/robots/:id/context — contexto CRM para o Cowork executar
+router.get('/:id/context', robotAuth, async (req, res) => {
+  try {
+    const [robot] = await sql`
+      SELECT r.*, c.name AS company_name, c.id AS cid
+      FROM robots r
+      JOIN companies c ON c.id = r.company_id
+      WHERE r.id = ${req.params.id}`;
+    if (!robot) return res.status(404).json({ error: 'Robô não encontrado.' });
+
+    const companyId = robot.company_id;
+    let context = {};
+
+    if (robot.tipo === 'prospeccao_whatsapp') {
+      const leads = await sql`
+        SELECT nome, telefone, stage, ultimo_whatsapp_at, score
+        FROM leads
+        WHERE company_id = ${companyId}
+          AND stage IN ('prospeccao','primeiro_contato')
+          AND (ultimo_whatsapp_at IS NULL OR ultimo_whatsapp_at < NOW() - INTERVAL '7 days')
+        ORDER BY score DESC NULLS LAST, created_at DESC
+        LIMIT 50`;
+      context = { tipo: 'prospeccao_whatsapp', leads };
+
+    } else if (robot.tipo === 'analise_conversas') {
+      const [stats] = await sql`
+        SELECT
+          COUNT(*) FILTER (WHERE ultimo_whatsapp_at > NOW() - INTERVAL '24 hours') AS contatados_24h,
+          COUNT(*) FILTER (WHERE stage = 'negociacao')  AS em_negociacao,
+          COUNT(*) FILTER (WHERE stage = 'prospeccao')  AS em_prospeccao,
+          COUNT(*) FILTER (WHERE stage = 'ganho')       AS ganhos_semana,
+          COUNT(*) FILTER (WHERE score::numeric >= 70)  AS leads_quentes
+        FROM leads WHERE company_id = ${companyId} AND ativo = true`;
+      const recentes = await sql`
+        SELECT nome, telefone, stage, score, ultimo_whatsapp_at, origem
+        FROM leads
+        WHERE company_id = ${companyId} AND ativo = true
+          AND ultimo_whatsapp_at > NOW() - INTERVAL '24 hours'
+        ORDER BY ultimo_whatsapp_at DESC LIMIT 30`;
+      context = { tipo: 'analise_conversas', stats, recentes };
+
+    } else if (robot.tipo === 'relatorio') {
+      const [stats] = await sql`
+        SELECT
+          COUNT(*) AS total_leads,
+          COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours') AS novos_hoje,
+          COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days')  AS novos_semana,
+          COUNT(*) FILTER (WHERE ultimo_whatsapp_at > NOW() - INTERVAL '24 hours') AS contatados_hoje,
+          COUNT(*) FILTER (WHERE stage = 'prospeccao')  AS prospeccao,
+          COUNT(*) FILTER (WHERE stage = 'negociacao')  AS negociacao,
+          COUNT(*) FILTER (WHERE stage = 'ganho')       AS ganhos,
+          COUNT(*) FILTER (WHERE stage = 'perdido')     AS perdidos,
+          ROUND(AVG(score::numeric)) AS score_medio
+        FROM leads WHERE company_id = ${companyId} AND ativo = true`;
+      context = { tipo: 'relatorio', stats };
+
+    } else {
+      const [count] = await sql`SELECT COUNT(*) AS total FROM leads WHERE company_id = ${companyId} AND ativo = true`;
+      context = { tipo: robot.tipo, total_leads: count.total };
+    }
+
+    res.json({ robot, context });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── A partir daqui, todos os endpoints exigem JWT ──────────────────────────────
 router.use(auth);
 
 // ── GET /api/robots ────────────────────────────────────────────────────────────
@@ -212,131 +333,6 @@ router.post('/:id/run', async (req, res) => {
       VALUES (${robot.id}, ${robot.company_id}, 'queued', 'Aguardando execução pelo Cowork…')`;
 
     res.json({ ok: true, message: `Robô "${robot.name}" enfileirado. O Cowork vai executar em instantes.` });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── GET /api/robots/queued — fila para o Cowork executar ──────────────────────
-router.get('/queued', async (req, res) => {
-  const token = req.headers['x-robot-token'];
-  if (!token || token !== process.env.ROBOT_SECRET) {
-    return res.status(401).json({ error: 'Token inválido.' });
-  }
-  try {
-    const robots = await sql`
-      SELECT r.*, c.name AS company_name
-      FROM robots r
-      JOIN companies c ON c.id = r.company_id
-      WHERE r.queued_at IS NOT NULL AND r.ativo = true
-      ORDER BY r.queued_at ASC`;
-    res.json(robots);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── DELETE /api/robots/:id/queued — Cowork limpa a fila após executar ─────────
-router.delete('/:id/queued', async (req, res) => {
-  const token = req.headers['x-robot-token'];
-  if (!token || token !== process.env.ROBOT_SECRET) {
-    return res.status(401).json({ error: 'Token inválido.' });
-  }
-  try {
-    await sql`UPDATE robots SET queued_at = NULL WHERE id = ${req.params.id}`;
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── POST /api/robots/:id/log-cowork — Cowork registra resultado (sem JWT) ──────
-router.post('/:id/log-cowork', async (req, res) => {
-  const token = req.headers['x-robot-token'];
-  if (!token || token !== process.env.ROBOT_SECRET) {
-    return res.status(401).json({ error: 'Token inválido.' });
-  }
-  const { status, output, duration_ms } = req.body;
-  try {
-    const [robot] = await sql`SELECT company_id FROM robots WHERE id = ${req.params.id}`;
-    if (!robot) return res.status(404).json({ error: 'Robô não encontrado.' });
-    const [log] = await sql`
-      INSERT INTO robot_logs (robot_id, company_id, status, output, duration_ms)
-      VALUES (${req.params.id}, ${robot.company_id}, ${status||'ok'}, ${output||null}, ${duration_ms||null})
-      RETURNING *`;
-    await sql`UPDATE robots SET updated_at = NOW() WHERE id = ${req.params.id}`;
-    res.json(log);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── GET /api/robots/:id/context — contexto CRM para o Cowork executar ─────────
-router.get('/:id/context', async (req, res) => {
-  const token = req.headers['x-robot-token'];
-  if (!token || token !== process.env.ROBOT_SECRET) {
-    return res.status(401).json({ error: 'Token inválido.' });
-  }
-  try {
-    const [robot] = await sql`
-      SELECT r.*, c.name AS company_name, c.id AS cid
-      FROM robots r
-      JOIN companies c ON c.id = r.company_id
-      WHERE r.id = ${req.params.id}`;
-    if (!robot) return res.status(404).json({ error: 'Robô não encontrado.' });
-
-    const companyId = robot.company_id;
-    let context = {};
-
-    if (robot.tipo === 'prospeccao_whatsapp') {
-      const leads = await sql`
-        SELECT nome, telefone, stage, ultimo_whatsapp_at, score
-        FROM leads
-        WHERE company_id = ${companyId}
-          AND stage IN ('prospeccao','primeiro_contato')
-          AND (ultimo_whatsapp_at IS NULL OR ultimo_whatsapp_at < NOW() - INTERVAL '7 days')
-        ORDER BY score DESC NULLS LAST, created_at DESC
-        LIMIT 50`;
-      context = { tipo: 'prospeccao_whatsapp', leads };
-
-    } else if (robot.tipo === 'analise_conversas') {
-      const [stats] = await sql`
-        SELECT
-          COUNT(*) FILTER (WHERE ultimo_whatsapp_at > NOW() - INTERVAL '24 hours') AS contatados_24h,
-          COUNT(*) FILTER (WHERE stage = 'negociacao')  AS em_negociacao,
-          COUNT(*) FILTER (WHERE stage = 'prospeccao')  AS em_prospeccao,
-          COUNT(*) FILTER (WHERE stage = 'ganho')       AS ganhos_semana,
-          COUNT(*) FILTER (WHERE score::numeric >= 70)  AS leads_quentes
-        FROM leads WHERE company_id = ${companyId} AND ativo = true`;
-      const recentes = await sql`
-        SELECT nome, telefone, stage, score, ultimo_whatsapp_at, origem
-        FROM leads
-        WHERE company_id = ${companyId} AND ativo = true
-          AND ultimo_whatsapp_at > NOW() - INTERVAL '24 hours'
-        ORDER BY ultimo_whatsapp_at DESC LIMIT 30`;
-      context = { tipo: 'analise_conversas', stats, recentes };
-
-    } else if (robot.tipo === 'relatorio') {
-      const [stats] = await sql`
-        SELECT
-          COUNT(*) AS total_leads,
-          COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours') AS novos_hoje,
-          COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days')  AS novos_semana,
-          COUNT(*) FILTER (WHERE ultimo_whatsapp_at > NOW() - INTERVAL '24 hours') AS contatados_hoje,
-          COUNT(*) FILTER (WHERE stage = 'prospeccao')  AS prospeccao,
-          COUNT(*) FILTER (WHERE stage = 'negociacao')  AS negociacao,
-          COUNT(*) FILTER (WHERE stage = 'ganho')       AS ganhos,
-          COUNT(*) FILTER (WHERE stage = 'perdido')     AS perdidos,
-          ROUND(AVG(score::numeric)) AS score_medio
-        FROM leads WHERE company_id = ${companyId} AND ativo = true`;
-      context = { tipo: 'relatorio', stats };
-
-    } else {
-      const [count] = await sql`SELECT COUNT(*) AS total FROM leads WHERE company_id = ${companyId} AND ativo = true`;
-      context = { tipo: robot.tipo, total_leads: count.total };
-    }
-
-    res.json({ robot, context });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
