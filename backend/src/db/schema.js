@@ -202,9 +202,14 @@ async function ensureSchema(force = false) {
       prompt_template   TEXT,
       whatsapp_template TEXT,
       ativo             BOOLEAN      DEFAULT true,
+      queued_at         TIMESTAMPTZ  DEFAULT NULL,
       updated_at        TIMESTAMPTZ  DEFAULT NOW(),
       created_at        TIMESTAMPTZ  DEFAULT NOW()
     )`));
+
+  // Migração: adiciona queued_at em tabelas existentes
+  await runSafe('robots_queued_at_col', () => sql`
+    ALTER TABLE robots ADD COLUMN IF NOT EXISTS queued_at TIMESTAMPTZ DEFAULT NULL`);
 
   // Logs de execução de robôs
   results.push(await runSafe('robot_logs', () => sql`
