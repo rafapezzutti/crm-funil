@@ -4,7 +4,7 @@
  * Executar uma vez: node scripts/migrate-prospecting-prompt.js
  */
 require('dotenv').config();
-const { sql } = require('./src/config/db');
+const { sql } = require('../src/config/db');
 
 const NOVO_PROMPT = `Você é o robô de prospecção ativa da empresa. Execute os seguintes passos:
 
