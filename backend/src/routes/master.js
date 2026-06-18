@@ -121,6 +121,40 @@ router.post('/impersonate', masterOnly, async (req, res) => {
 });
 
 
+// POST /api/master/companies — criar empresa
+router.post('/companies', masterOnly, async (req, res) => {
+  const { name, plan = 'trial', status = 'ativo' } = req.body;
+  if (!name?.trim()) return res.status(400).json({ error: 'Nome é obrigatório.' });
+  const slug = name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+  try {
+    const [company] = await sql`
+      INSERT INTO companies (name, slug, plan, status)
+      VALUES (${name.trim()}, ${slug + '-' + Date.now()}, ${plan}, ${status})
+      RETURNING id, name, slug, plan, status, trial_ends_at`;
+    res.status(201).json(company);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/master/companies/:id — deletar empresa
+router.delete('/companies/:id', masterOnly, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [company] = await sql`SELECT id, name FROM companies WHERE id = ${id}`;
+    if (!company) return res.status(404).json({ error: 'Empresa não encontrada.' });
+    // Remove dados dependentes antes
+    await sql`DELETE FROM robot_logs WHERE company_id = ${id}`;
+    await sql`DELETE FROM robots WHERE company_id = ${id}`;
+    await sql`DELETE FROM leads WHERE company_id = ${id}`;
+    await sql`DELETE FROM users WHERE company_id = ${id}`;
+    await sql`DELETE FROM companies WHERE id = ${id}`;
+    res.json({ ok: true, deleted: company.name });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // PUT /api/master/companies/:id
 router.put('/companies/:id', masterOnly, async (req, res) => {
   const { id } = req.params;
