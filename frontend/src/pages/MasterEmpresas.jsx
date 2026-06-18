@@ -15,21 +15,56 @@ function planColor(plan) {
   return PLANS.find(p => p.value === plan)?.color || 'var(--muted)';
 }
 
-const EMPTY_FORM = { name:'', plan:'trial', status:'ativo' };
+const EMPTY_FORM = { name:'', cnpj:'', telefone:'', email:'', password:'', confirmPassword:'', plan:'trial', status:'ativo' };
+
+function Field({ label, children }) {
+  return (
+    <div style={{ marginBottom:14 }}>
+      <label style={{ fontSize:12, color:'var(--muted)', display:'block', marginBottom:4 }}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function Input({ value, onChange, placeholder, type='text', autoFocus }) {
+  return (
+    <input type={type} value={value} onChange={onChange} placeholder={placeholder} autoFocus={autoFocus}
+      style={{ width:'100%', boxSizing:'border-box', padding:'8px 12px', borderRadius:8, fontSize:14 }} />
+  );
+}
 
 function CompanyModal({ company, onClose, onSave }) {
   const isNew = !company?.id;
-  const [form,   setForm]   = useState(company ? { name: company.name, plan: company.plan || 'trial', status: company.status || 'ativo' } : EMPTY_FORM);
-  const [saving, setSaving] = useState(false);
-  const [error,  setError]  = useState('');
+  const [form,    setForm]    = useState(
+    company
+      ? { name: company.name, cnpj: company.cnpj || '', telefone: company.telefone || '',
+          email:'', password:'', confirmPassword:'',
+          plan: company.plan || 'trial', status: company.status || 'ativo' }
+      : EMPTY_FORM
+  );
+  const [saving,  setSaving]  = useState(false);
+  const [error,   setError]   = useState('');
+  const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
+
+  // Verificação de senhas em tempo real
+  const pwMatch = !form.password || !form.confirmPassword || form.password === form.confirmPassword;
 
   async function handleSave() {
     if (!form.name.trim()) { setError('Nome é obrigatório.'); return; }
+    if (isNew) {
+      if (!form.email.trim())    { setError('E-mail é obrigatório.'); return; }
+      if (!form.password)        { setError('Senha é obrigatória.'); return; }
+      if (form.password.length < 6) { setError('Senha deve ter pelo menos 6 caracteres.'); return; }
+      if (form.password !== form.confirmPassword) { setError('As senhas não coincidem.'); return; }
+    }
     setSaving(true); setError('');
     try {
+      const payload = isNew
+        ? { name: form.name, cnpj: form.cnpj, telefone: form.telefone, email: form.email, password: form.password, plan: form.plan, status: form.status }
+        : { name: form.name, cnpj: form.cnpj, telefone: form.telefone, plan: form.plan, status: form.status };
       const { data } = isNew
-        ? await api.post('/master/companies', form)
-        : await api.put('/master/companies/' + company.id, form);
+        ? await api.post('/master/companies', payload)
+        : await api.put('/master/companies/' + company.id, payload);
       onSave(data, isNew);
     } catch (e) {
       setError(e.response?.data?.error || 'Erro ao salvar');
@@ -39,53 +74,90 @@ function CompanyModal({ company, onClose, onSave }) {
   return (
     <div style={{
       position:'fixed', inset:0, zIndex:1000,
-      background:'rgba(0,0,0,.7)', display:'flex', alignItems:'center', justifyContent:'center',
+      background:'rgba(0,0,0,.7)', display:'flex', alignItems:'center', justifyContent:'center', padding:16,
     }} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="card" style={{ width:440, padding:28, borderRadius:14 }}>
+      <div className="card" style={{ width:480, padding:28, borderRadius:14, maxHeight:'90vh', overflowY:'auto' }}>
         <h2 style={{ margin:'0 0 20px', fontSize:16 }}>
           {isNew ? '🏢 Nova Empresa' : '✏️ Editar empresa'}
         </h2>
 
-        <label style={{ fontSize:12, color:'var(--muted)', display:'block', marginBottom:4 }}>Nome *</label>
-        <input
-          value={form.name}
-          onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
-          placeholder="Ex: CRM Petshop"
-          autoFocus
-          style={{ width:'100%', boxSizing:'border-box', marginBottom:16, padding:'8px 12px', borderRadius:8, fontSize:14 }}
-        />
+        <Field label="Nome da empresa *">
+          <Input value={form.name} onChange={set('name')} placeholder="Ex: Petshop do João" autoFocus />
+        </Field>
 
-        <label style={{ fontSize:12, color:'var(--muted)', display:'block', marginBottom:6 }}>Plano</label>
-        <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:16 }}>
-          {PLANS.map(p => (
-            <button key={p.value} onClick={() => setForm(f => ({ ...f, plan: p.value }))} style={{
-              padding:'6px 14px', borderRadius:20, fontSize:12, fontWeight:700, cursor:'pointer',
-              border: '2px solid ' + (form.plan === p.value ? p.color : 'var(--border)'),
-              background: form.plan === p.value ? p.color + '22' : 'var(--card2)',
-              color: form.plan === p.value ? p.color : 'var(--muted)',
-            }}>{p.label}</button>
-          ))}
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:14 }}>
+          <Field label="CNPJ">
+            <Input value={form.cnpj} onChange={set('cnpj')} placeholder="00.000.000/0001-00" />
+          </Field>
+          <Field label="Telefone">
+            <Input value={form.telefone} onChange={set('telefone')} placeholder="(00) 00000-0000" />
+          </Field>
         </div>
 
-        <label style={{ fontSize:12, color:'var(--muted)', display:'block', marginBottom:6 }}>Status</label>
-        <div style={{ display:'flex', gap:8, marginBottom:24 }}>
-          {['ativo','inativo','suspenso'].map(s => (
-            <button key={s} onClick={() => setForm(f => ({ ...f, status: s }))} style={{
-              padding:'6px 14px', borderRadius:20, fontSize:12, fontWeight:700, cursor:'pointer',
-              border: '2px solid ' + (form.status === s ? 'var(--accent)' : 'var(--border)'),
-              background: form.status === s ? 'rgba(31,111,235,.15)' : 'var(--card2)',
-              color: form.status === s ? 'var(--accent)' : 'var(--muted)',
-              textTransform:'capitalize',
-            }}>{s}</button>
-          ))}
-        </div>
+        {isNew && (
+          <>
+            <div style={{ borderTop:'1px solid var(--border)', margin:'4px 0 16px', paddingTop:14 }}>
+              <div style={{ fontSize:12, color:'var(--muted)', marginBottom:12 }}>
+                👤 Acesso do administrador — o cliente usará estas credenciais para entrar no CRM
+              </div>
+              <Field label="E-mail *">
+                <Input value={form.email} onChange={set('email')} placeholder="admin@empresa.com" type="email" />
+              </Field>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+                <div>
+                  <Field label="Senha *">
+                    <Input value={form.password} onChange={set('password')} placeholder="mínimo 6 caracteres" type="password" />
+                  </Field>
+                </div>
+                <div>
+                  <Field label="Confirmar senha *">
+                    <Input value={form.confirmPassword} onChange={set('confirmPassword')} placeholder="repita a senha" type="password" />
+                  </Field>
+                </div>
+              </div>
+              {form.password && form.confirmPassword && (
+                <div style={{ fontSize:11, marginTop:-8, marginBottom:8,
+                  color: pwMatch ? 'var(--success)' : 'var(--danger)' }}>
+                  {pwMatch ? '✅ Senhas idênticas' : '❌ Senhas não coincidem'}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        <Field label="Plano">
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:2 }}>
+            {PLANS.map(p => (
+              <button key={p.value} onClick={() => setForm(f => ({ ...f, plan: p.value }))} style={{
+                padding:'6px 14px', borderRadius:20, fontSize:12, fontWeight:700, cursor:'pointer',
+                border: '2px solid ' + (form.plan === p.value ? p.color : 'var(--border)'),
+                background: form.plan === p.value ? p.color + '22' : 'var(--card2)',
+                color: form.plan === p.value ? p.color : 'var(--muted)',
+              }}>{p.label}</button>
+            ))}
+          </div>
+        </Field>
+
+        <Field label="Status">
+          <div style={{ display:'flex', gap:8, marginTop:2 }}>
+            {['ativo','inativo','suspenso'].map(s => (
+              <button key={s} onClick={() => setForm(f => ({ ...f, status: s }))} style={{
+                padding:'6px 14px', borderRadius:20, fontSize:12, fontWeight:700, cursor:'pointer',
+                border: '2px solid ' + (form.status === s ? 'var(--accent)' : 'var(--border)'),
+                background: form.status === s ? 'rgba(31,111,235,.15)' : 'var(--card2)',
+                color: form.status === s ? 'var(--accent)' : 'var(--muted)',
+                textTransform:'capitalize',
+              }}>{s}</button>
+            ))}
+          </div>
+        </Field>
 
         {error && <div style={{ color:'var(--danger)', fontSize:12, marginBottom:12 }}>{error}</div>}
 
-        <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
+        <div style={{ display:'flex', gap:10, justifyContent:'flex-end', marginTop:8 }}>
           <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
-            {saving ? 'Salvando…' : isNew ? 'Criar' : 'Salvar'}
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving || (!pwMatch && isNew)}>
+            {saving ? 'Salvando…' : isNew ? 'Criar empresa' : 'Salvar'}
           </button>
         </div>
       </div>

@@ -1,6 +1,7 @@
 const router  = require('express').Router();
 const auth    = require('../middleware/auth');
 const jwt     = require('jsonwebtoken');
+const bcrypt  = require('bcryptjs');
 const { sql } = require('../config/db');
 
 // ── POST /api/master/bootstrap ─────────────────────────────────────────────────
@@ -121,17 +122,39 @@ router.post('/impersonate', masterOnly, async (req, res) => {
 });
 
 
-// POST /api/master/companies — criar empresa
+// POST /api/master/companies — criar empresa + usuário admin
 router.post('/companies', masterOnly, async (req, res) => {
-  const { name, plan = 'trial', status = 'ativo' } = req.body;
-  if (!name?.trim()) return res.status(400).json({ error: 'Nome é obrigatório.' });
-  const slug = name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+  const { name, cnpj, telefone, email, password, plan = 'trial', status = 'ativo' } = req.body;
+  if (!name?.trim())     return res.status(400).json({ error: 'Nome é obrigatório.' });
+  if (!email?.trim())    return res.status(400).json({ error: 'E-mail é obrigatório.' });
+  if (!password)         return res.status(400).json({ error: 'Senha é obrigatória.' });
+  if (password.length < 6) return res.status(400).json({ error: 'Senha deve ter pelo menos 6 caracteres.' });
+
+  const slug = name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') + '-' + Date.now();
   try {
+    // Verifica e-mail duplicado
+    const [existing] = await sql`SELECT id FROM users WHERE email = ${email.toLowerCase().trim()}`;
+    if (existing) return res.status(409).json({ error: 'E-mail já cadastrado.' });
+
+    // Cria empresa
     const [company] = await sql`
-      INSERT INTO companies (name, slug, plan, status)
-      VALUES (${name.trim()}, ${slug + '-' + Date.now()}, ${plan}, ${status})
-      RETURNING id, name, slug, plan, status, trial_ends_at`;
-    res.status(201).json(company);
+      INSERT INTO companies (name, slug, cnpj, telefone, plan, status)
+      VALUES (${name.trim()}, ${slug}, ${cnpj?.trim() || null}, ${telefone?.trim() || null}, ${plan}, ${status})
+      RETURNING id, name, slug, cnpj, telefone, plan, status, trial_ends_at`;
+
+    // Cria usuário admin
+    const hash = await bcrypt.hash(password, 10);
+    const [user] = await sql`
+      INSERT INTO users (email, password_hash, name)
+      VALUES (${email.toLowerCase().trim()}, ${hash}, ${name.trim()})
+      RETURNING id, email, name`;
+
+    // Vincula usuário à empresa como admin
+    await sql`
+      INSERT INTO company_members (company_id, user_id, role)
+      VALUES (${company.id}, ${user.id}, 'admin')`;
+
+    res.status(201).json({ ...company, admin_email: user.email, total_leads: 0, total_robots: 0 });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -173,6 +173,11 @@ async function ensureSchema(force = false) {
       ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ DEFAULT NOW() + INTERVAL '14 days',
       ADD COLUMN IF NOT EXISTS status        VARCHAR(20)  DEFAULT 'active'`));
 
+  results.push(await runSafe('companies_contact_info', () => sql`
+    ALTER TABLE companies
+      ADD COLUMN IF NOT EXISTS cnpj     VARCHAR(20),
+      ADD COLUMN IF NOT EXISTS telefone VARCHAR(30)`));
+
   results.push(await runSafe('leads_migration_data_producao', () => sql`
     ALTER TABLE leads ADD COLUMN IF NOT EXISTS data_producao TIMESTAMPTZ`));
 
