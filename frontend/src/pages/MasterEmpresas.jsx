@@ -3,19 +3,7 @@ import api from '../api';
 import { useAuth } from '../AuthContext';
 import { useNavigate } from 'react-router-dom';
 
-const PLANS = [
-  { value:'trial',    label:'Trial',    color:'var(--warning)' },
-  { value:'starter',  label:'Starter',  color:'#60a5fa' },
-  { value:'pro',      label:'Pro',      color:'#a78bfa' },
-  { value:'business', label:'Business', color:'#34d399' },
-  { value:'master',   label:'Master',   color:'#f59e0b' },
-];
-
-function planColor(plan) {
-  return PLANS.find(p => p.value === plan)?.color || 'var(--muted)';
-}
-
-const EMPTY_FORM = { name:'', cnpj:'', telefone:'', email:'', password:'', confirmPassword:'', plan:'trial', status:'ativo' };
+const EMPTY_FORM = { name:'', cnpj:'', telefone:'', email:'', password:'', confirmPassword:'', status:'ativo' };
 
 function Field({ label, children }) {
   return (
@@ -38,8 +26,7 @@ function CompanyModal({ company, onClose, onSave }) {
   const [form,    setForm]    = useState(
     company
       ? { name: company.name, cnpj: company.cnpj || '', telefone: company.telefone || '',
-          email:'', password:'', confirmPassword:'',
-          plan: company.plan || 'trial', status: company.status || 'ativo' }
+          email:'', password:'', confirmPassword:'', status: company.status || 'ativo' }
       : EMPTY_FORM
   );
   const [saving,  setSaving]  = useState(false);
@@ -60,8 +47,8 @@ function CompanyModal({ company, onClose, onSave }) {
     setSaving(true); setError('');
     try {
       const payload = isNew
-        ? { name: form.name, cnpj: form.cnpj, telefone: form.telefone, email: form.email, password: form.password, plan: form.plan, status: form.status }
-        : { name: form.name, cnpj: form.cnpj, telefone: form.telefone, plan: form.plan, status: form.status };
+        ? { name: form.name, cnpj: form.cnpj, telefone: form.telefone, email: form.email, password: form.password, status: form.status }
+        : { name: form.name, cnpj: form.cnpj, telefone: form.telefone, status: form.status };
       const { data } = isNew
         ? await api.post('/master/companies', payload)
         : await api.put('/master/companies/' + company.id, payload);
@@ -124,19 +111,6 @@ function CompanyModal({ company, onClose, onSave }) {
             </div>
           </>
         )}
-
-        <Field label="Plano">
-          <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:2 }}>
-            {PLANS.map(p => (
-              <button key={p.value} onClick={() => setForm(f => ({ ...f, plan: p.value }))} style={{
-                padding:'6px 14px', borderRadius:20, fontSize:12, fontWeight:700, cursor:'pointer',
-                border: '2px solid ' + (form.plan === p.value ? p.color : 'var(--border)'),
-                background: form.plan === p.value ? p.color + '22' : 'var(--card2)',
-                color: form.plan === p.value ? p.color : 'var(--muted)',
-              }}>{p.label}</button>
-            ))}
-          </div>
-        </Field>
 
         <Field label="Status">
           <div style={{ display:'flex', gap:8, marginTop:2 }}>
@@ -220,13 +194,6 @@ export default function MasterEmpresas() {
     } finally { setDeleting(null); }
   }
 
-  function trialDias(ends_at) {
-    if (!ends_at) return null;
-    const d = Math.ceil((new Date(ends_at) - Date.now()) / 86400000);
-    if (d <= 0) return <span style={{ fontSize:11, color:'var(--danger)' }}>Expirado</span>;
-    return <span style={{ fontSize:11, color: d <= 3 ? 'var(--danger)' : 'var(--muted)' }}>{d}d restantes</span>;
-  }
-
   return (
     <div className="page">
       <div className="page-header">
@@ -263,11 +230,6 @@ export default function MasterEmpresas() {
               </div>
 
               <div style={{ display:'flex', gap:20, alignItems:'center', flexWrap:'wrap' }}>
-                <div style={{ textAlign:'center' }}>
-                  <div style={{ fontSize:11, color:'var(--muted)' }}>Plano</div>
-                  <span style={{ fontSize:12, fontWeight:700, color: planColor(c.plan), textTransform:'uppercase' }}>{c.plan}</span>
-                  {c.plan === 'trial' && <div>{trialDias(c.trial_ends_at)}</div>}
-                </div>
                 <div style={{ textAlign:'center' }}>
                   <div style={{ fontSize:11, color:'var(--muted)' }}>Leads</div>
                   <div style={{ fontWeight:700 }}>{c.total_leads}</div>
