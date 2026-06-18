@@ -152,21 +152,37 @@ router.post('/prospecting-sync', async (req, res) => {
       return res.status(401).json({ error: 'Token inválido.' });
     }
 
-    const companyId = process.env.PROSPECTING_COMPANY_ID;
-    if (!companyId) {
+    const defaultCompanyId = process.env.PROSPECTING_COMPANY_ID;
+    if (!defaultCompanyId) {
       return res.status(500).json({ error: 'PROSPECTING_COMPANY_ID não configurado no Render.' });
     }
+
+    // Mapeamento crm → empresa (fallback para PROSPECTING_COMPANY_ID se não configurado)
+    const CRM_COMPANY_MAP = {
+      'pet':      process.env.PROSPECTING_COMPANY_ID_PETS     || defaultCompanyId,
+      'pets':     process.env.PROSPECTING_COMPANY_ID_PETS     || defaultCompanyId,
+      'saude':    process.env.PROSPECTING_COMPANY_ID_SAUDE    || defaultCompanyId,
+      'saúde':    process.env.PROSPECTING_COMPANY_ID_SAUDE    || defaultCompanyId,
+      'esportes': process.env.PROSPECTING_COMPANY_ID_ESPORTES || defaultCompanyId,
+      'spa':      process.env.PROSPECTING_COMPANY_ID_SPAS     || defaultCompanyId,
+      'spas':     process.env.PROSPECTING_COMPANY_ID_SPAS     || defaultCompanyId,
+    };
 
     if (!Array.isArray(prospectos) || prospectos.length === 0) {
       return res.json({ ok: true, criados: 0, atualizados: 0, ignorados: 0, promovidos: 0 });
     }
 
-    // Admin da empresa — responsável padrão para leads sem dono
-    const [adminMember] = await sql`
-      SELECT user_id FROM company_members
-      WHERE company_id = ${companyId}::uuid AND role = 'admin'
-      LIMIT 1`;
-    const adminId = adminMember?.user_id || null;
+    // Cache de adminId por empresa para evitar N+1 queries
+    const adminCache = {};
+    const getAdminId = async (cid) => {
+      if (adminCache[cid] !== undefined) return adminCache[cid];
+      const [adminMember] = await sql`
+        SELECT user_id FROM company_members
+        WHERE company_id = ${cid}::uuid AND role = 'admin'
+        LIMIT 1`;
+      adminCache[cid] = adminMember?.user_id || null;
+      return adminCache[cid];
+    };
 
     const SCORE_MAP  = { quente: 'quente', morno: 'morno', muito_quente: 'muito_quente' };
     const SCORE_RANK = { morno: 1, quente: 2, muito_quente: 3 };
@@ -174,6 +190,10 @@ router.post('/prospecting-sync', async (req, res) => {
     let criados = 0, atualizados = 0, ignorados = 0, promovidos = 0;
 
     for (const p of prospectos) {
+      // Resolver empresa e admin para este lead
+      const companyId = CRM_COMPANY_MAP[(p.crm || '').toLowerCase()] || defaultCompanyId;
+      const adminId   = await getAdminId(companyId);
+
       // Aceita tanto 'classificacao' quanto 'score' como nome do campo
       const classificacao = (p.classificacao || p.score || '').toLowerCase();
       const score         = SCORE_MAP[classificacao];
