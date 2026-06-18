@@ -1,9 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
-
-const CRM_COLOR = { saude:'var(--crm-saude)', spa:'var(--crm-spa)', esportes:'var(--crm-esportes)', pet:'var(--crm-pet)' };
-const CRM_LABEL = { saude:'CRM Saúde', spa:'CRM Spa', esportes:'CRM Esportes', pet:'CRM Pet' };
+import { useCrmTypes } from '../CrmTypesContext';
 const TIPO_ICON = {
   criacao:'✨', mudanca_etapa:'📍', ligacao:'📞', email:'✉️',
   whatsapp:'💬', demo:'🖥', proposta:'📄', obs:'💬',
@@ -19,6 +17,7 @@ function daysAgo(d) {
 
 // ── Aba 1: Visão Geral ────────────────────────────────────────────────────────
 function TabGeral({ data, alerts, nav }) {
+  const { types, crmLabel, crmColor } = useCrmTypes();
   if (!data) return null;
   const stage = data.byStage||{};
   const mrr   = data.mrr||{};
@@ -50,13 +49,13 @@ function TabGeral({ data, alerts, nav }) {
             {fmt(mrr.total||0)}
           </div>
           <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-            {['saude','spa','esportes','pet'].filter(crm=>mrr[crm]>0).map(crm => (
-              <div key={crm} style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            {types.filter(t=>mrr[t.value]>0).map(t => (
+              <div key={t.value} style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                 <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                  <div style={{ width:10, height:10, borderRadius:'50%', background: CRM_COLOR[crm] }} />
-                  <span style={{ fontSize:13 }}>{CRM_LABEL[crm]}</span>
+                  <div style={{ width:10, height:10, borderRadius:'50%', background: crmColor(t.value) }} />
+                  <span style={{ fontSize:13 }}>{crmLabel(t.value)}</span>
                 </div>
-                <span style={{ fontWeight:700, color: CRM_COLOR[crm] }}>{fmt(mrr[crm])}</span>
+                <span style={{ fontWeight:700, color: crmColor(t.value) }}>{fmt(mrr[t.value])}</span>
               </div>
             ))}
           </div>

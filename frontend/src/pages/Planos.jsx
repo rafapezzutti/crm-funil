@@ -1,12 +1,10 @@
 import { useState, useEffect } from 'react';
 import api from '../api';
-
-const CRM_OPTS  = ['saude','spa','esportes','pet'];
-const CRM_LABEL = { saude:'CRM Saúde', spa:'CRM Spa', esportes:'CRM Esportes', pet:'CRM Pet' };
-const CRM_BADGE = { saude:'badge-saude', spa:'badge-spa', esportes:'badge-esportes', pet:'badge-pet' };
+import { useCrmTypes } from '../CrmTypesContext';
 function fmt(v) { return Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:2}); }
 
 export default function Planos() {
+  const { types, crmLabel, crmBadgeClass } = useCrmTypes();
   const [plans,   setPlans]   = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal,   setModal]   = useState(false);
@@ -41,8 +39,8 @@ export default function Planos() {
     await api.delete(`/plans/${id}`); load();
   }
 
-  const byCrm = CRM_OPTS.reduce((acc, crm) => {
-    acc[crm] = plans.filter(p => p.crm === crm);
+  const byCrm = types.reduce((acc, t) => {
+    acc[t.value] = plans.filter(p => p.crm === t.value);
     return acc;
   }, {});
 
@@ -60,10 +58,10 @@ export default function Planos() {
         <div style={{textAlign:'center',padding:40,color:'var(--muted)'}}>Carregando…</div>
       ) : (
         <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))', gap:16}}>
-          {CRM_OPTS.map(crm => (
+          {types.map(t => { const crm = t.value; return (
             <div key={crm} className="card">
               <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
-                <span className={`badge ${CRM_BADGE[crm]}`} style={{fontSize:12}}>{CRM_LABEL[crm]}</span>
+                <span className={`badge ${crmBadgeClass(crm)}`} style={{fontSize:12}}>{crmLabel(crm)}</span>
                 <button className="btn btn-ghost btn-sm" onClick={() => { setForm({crm,nome:'',valor:'',ativo:true}); setEditing(null); setModal(true); }}>
                   ＋
                 </button>
@@ -91,7 +89,7 @@ export default function Planos() {
                   ))}
               </div>
             </div>
-          ))}
+          ); })}
         </div>
       )}
 
@@ -107,7 +105,7 @@ export default function Planos() {
                 <label>CRM *</label>
                 <select value={form.crm} onChange={e => set('crm', e.target.value)}>
                   <option value="">Selecione…</option>
-                  {CRM_OPTS.map(c => <option key={c} value={c}>{CRM_LABEL[c]}</option>)}
+                  {types.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </select>
               </div>
               <div className="form-group">

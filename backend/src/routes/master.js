@@ -167,10 +167,20 @@ router.delete('/companies/:id', masterOnly, async (req, res) => {
     const [company] = await sql`SELECT id, name FROM companies WHERE id = ${id}`;
     if (!company) return res.status(404).json({ error: 'Empresa não encontrada.' });
     // Remove dados dependentes antes
+    // Identificar usuários exclusivos desta empresa (antes de remover memberships)
+    const exclusiveUsers = await sql`
+      SELECT user_id FROM company_members WHERE company_id = ${id}
+      AND user_id NOT IN (SELECT user_id FROM company_members WHERE company_id != ${id})`;
+    const userIds = exclusiveUsers.map(u => u.user_id);
+    // Remover dados dependentes
     await sql`DELETE FROM robot_logs WHERE company_id = ${id}`;
     await sql`DELETE FROM robots WHERE company_id = ${id}`;
+    await sql`DELETE FROM lead_activities WHERE lead_id IN (SELECT id FROM leads WHERE company_id = ${id})`;
     await sql`DELETE FROM leads WHERE company_id = ${id}`;
-    await sql`DELETE FROM users WHERE company_id = ${id}`;
+    await sql`DELETE FROM company_settings WHERE company_id = ${id}`;
+    await sql`DELETE FROM seller_profiles WHERE company_id = ${id}`;
+    await sql`DELETE FROM company_members WHERE company_id = ${id}`;
+    if (userIds.length) await sql`DELETE FROM users WHERE id = ANY(${userIds})`;
     await sql`DELETE FROM companies WHERE id = ${id}`;
     res.json({ ok: true, deleted: company.name });
   } catch (err) {
@@ -181,19 +191,21 @@ router.delete('/companies/:id', masterOnly, async (req, res) => {
 // PUT /api/master/companies/:id
 router.put('/companies/:id', masterOnly, async (req, res) => {
   const { id } = req.params;
-  const { name, plan, status, trial_ends_at } = req.body;
+  const { name, cnpj, telefone, plan, status, trial_ends_at } = req.body;
   try {
     const [company] = await sql`
       UPDATE companies
       SET
         name           = COALESCE(${name || null}, name),
+        cnpj           = COALESCE(${cnpj !== undefined ? (cnpj || null) : null}, cnpj),
+        telefone       = COALESCE(${telefone !== undefined ? (telefone || null) : null}, telefone),
         plan           = COALESCE(${plan || null}, plan),
         status         = COALESCE(${status || null}, status),
         trial_ends_at  = CASE WHEN ${trial_ends_at !== undefined ? String(trial_ends_at) : null}::text IS NOT NULL
                               THEN ${trial_ends_at || null}::timestamptz
                               ELSE trial_ends_at END
       WHERE id = ${id}
-      RETURNING id, name, slug, plan, status, trial_ends_at`;
+      RETURNING id, name, slug, cnpj, telefone, plan, status, trial_ends_at`;
     if (!company) return res.status(404).json({ error: 'Empresa não encontrada.' });
     res.json(company);
   } catch (err) {

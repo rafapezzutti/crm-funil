@@ -1,9 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
-
-const CRM_LABEL = { saude:'CRM Saúde', spa:'CRM Spa', esportes:'CRM Esportes', pet:'CRM Pet' };
-const CRM_BADGE = { saude:'badge-saude', spa:'badge-spa', esportes:'badge-esportes', pet:'badge-pet' };
+import { useCrmTypes } from '../CrmTypesContext';
 
 function fmt(v) {
   return Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:2});
@@ -11,6 +9,7 @@ function fmt(v) {
 
 export default function Producao() {
   const nav  = useNavigate();
+  const { types, crmLabel, crmBadgeClass } = useCrmTypes();
   const [leads,  setLeads]  = useState([]);
   const [mrr,    setMrr]    = useState([]);
   const [loading,setLoading]= useState(true);
@@ -51,7 +50,7 @@ export default function Producao() {
         </div>
         {mrr.map(r => (
           <div key={r.crm} className="kpi-card">
-            <div className="kpi-label"><span className={`badge ${CRM_BADGE[r.crm]||''}`}>{CRM_LABEL[r.crm]||r.crm}</span></div>
+            <div className="kpi-label"><span className={`badge ${crmBadgeClass(r.crm)}`}>{crmLabel(r.crm)}</span></div>
             <div className="kpi-value" style={{fontSize:18}}>{fmt(r.mrr)}</div>
             <div className="kpi-sub">{r.clientes} cliente{r.clientes!=1?'s':''} · tk {fmt(r.ticket)}</div>
           </div>
@@ -64,7 +63,7 @@ export default function Producao() {
           placeholder="🔍 Buscar…" style={{width:240, flex:'none'}} />
         <select value={crmF} onChange={e=>setCrmF(e.target.value)} style={{width:160, flex:'none'}}>
           <option value="">Todos os CRMs</option>
-          {['saude','spa','esportes','pet'].map(c=><option key={c} value={c}>{CRM_LABEL[c]}</option>)}
+          {types.map(t=><option key={t.value} value={t.value}>{crmLabel(t.value)}</option>)}
         </select>
         <button className="btn btn-ghost" onClick={load}>Filtrar</button>
       </div>
@@ -98,7 +97,7 @@ export default function Producao() {
                       <div style={{fontWeight:600}}>{l.empresa||l.nome}</div>
                       {l.empresa && <div style={{fontSize:11,color:'var(--muted)'}}>{l.nome}</div>}
                     </td>
-                    <td>{l.crm && <span className={`badge ${CRM_BADGE[l.crm]||''}`}>{CRM_LABEL[l.crm]||l.crm}</span>}</td>
+                    <td>{l.crm && <span className={`badge ${crmBadgeClass(l.crm)}`}>{crmLabel(l.crm)}</span>}</td>
                     <td style={{fontSize:12,color:'var(--muted)'}}>{l.plano_nome||'—'}</td>
                     <td style={{fontWeight:700, color:'var(--success)'}}>
                       {fmt(l.valor_negociado||l.plano_valor||0)}

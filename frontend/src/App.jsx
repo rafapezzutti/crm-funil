@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './AuthContext';
+import { CrmTypesProvider } from './CrmTypesContext';
 import Sidebar from './components/Sidebar';
 import Login          from './pages/Login';
 import Dashboard      from './pages/Dashboard';
@@ -36,6 +37,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <CrmTypesProvider>
         <Routes>
           <Route path="/login"    element={<Login />} />
           <Route path="/register" element={<Register />} />
@@ -54,6 +56,7 @@ export default function App() {
           <Route path="/reset-password"   element={<ResetPassword />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </CrmTypesProvider>
       </AuthProvider>
     </BrowserRouter>
   );

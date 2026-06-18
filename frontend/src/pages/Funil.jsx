@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import LeadModal from '../components/LeadModal';
+import { useCrmTypes } from '../CrmTypesContext';
 
 const STAGES = [
   { key:'prospeccao', label:'Prospecção',  color:'var(--stage-prospeccao)', icon:'🎯' },
@@ -11,8 +12,6 @@ const STAGES = [
   { key:'perdido',    label:'Perdidos',    color:'var(--stage-perdido)',    icon:'❌' },
 ];
 
-const CRM_BADGE = { saude:'badge-saude', spa:'badge-spa', esportes:'badge-esportes', pet:'badge-pet' };
-const CRM_LABEL = { saude:'Saúde', spa:'Spa', esportes:'Esportes', pet:'Pet' };
 const SCORE_ICON = { muito_quente:'🔥', quente:'🌶️', morno:'⚡', frio:'💧', muito_frio:'❄️' };
 const ORIGEM_LABEL = {
   whatsapp:'WhatsApp', linkedin:'LinkedIn', google:'Google', instagram:'Instagram',
@@ -33,6 +32,7 @@ function whatsappAge(ts) {
 }
 
 function LeadCard({ lead, onOpen, onMove }) {
+  const { crmLabel, crmBadgeClass } = useCrmTypes();
   const days    = lead.stage === 'piloto' ? trialDays(lead.trial_end) : null;
   const zap     = whatsappAge(lead.ultimo_whatsapp_at);
   const isProsp = lead.origem === 'prospeccao_ativa';
@@ -59,8 +59,8 @@ function LeadCard({ lead, onOpen, onMove }) {
       )}
       <div style={{display:'flex', flexWrap:'wrap', gap:4, marginBottom:8}}>
         {lead.crm && (
-          <span className={`badge ${CRM_BADGE[lead.crm]||''}`}>
-            {CRM_LABEL[lead.crm] || lead.crm}
+          <span className={`badge ${crmBadgeClass(lead.crm)}`}>
+            {crmLabel(lead.crm)}
           </span>
         )}
         {isProsp && (
@@ -131,6 +131,7 @@ function LeadCard({ lead, onOpen, onMove }) {
 
 export default function Funil() {
   const nav  = useNavigate();
+  const { types, crmLabel } = useCrmTypes();
   const [leads,   setLeads]   = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal,   setModal]   = useState(false);
@@ -196,8 +197,7 @@ export default function Funil() {
           style={{width:260, flex:'none'}} />
         <select value={crmF} onChange={e => { setCrmF(e.target.value); }} style={{width:140, flex:'none'}}>
           <option value="">Todos os CRMs</option>
-          {['saude','spa','esportes','pet'].map(c =>
-            <option key={c} value={c}>{c.charAt(0).toUpperCase()+c.slice(1)}</option>)}
+          {types.map(t => <option key={t.value} value={t.value}>{crmLabel(t.value)}</option>)}
         </select>
         <select value={scoreF} onChange={e => setScoreF(e.target.value)} style={{width:140, flex:'none'}}>
           <option value="">Todos os scores</option>

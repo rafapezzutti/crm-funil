@@ -2,7 +2,10 @@ import { useState, useEffect } from 'react';
 import api from '../api';
 import { useAuth } from '../AuthContext';
 
-const CRM_OPTS_DEFAULT = ['saude','spa','esportes','pet'];
+const CRM_OPTS_DEFAULT = [
+  { value:'saude', label:'Saúde' },{ value:'pet', label:'Pet' },
+  { value:'esportes', label:'Esportes' },{ value:'spa', label:'Spa' },
+];
 const ORIGEM_OPTS = ['whatsapp','linkedin','google','instagram','site','indicacao','evento','prospeccao_ativa','outro'];
 const SCORE_OPTS  = ['muito_quente','quente','morno','frio','muito_frio'];
 const ACAO_OPTS   = ['ligacao','whatsapp','demonstracao','proposta','follow_up','outro'];
@@ -32,7 +35,7 @@ export default function LeadModal({ lead: initial, onClose, onSaved }) {
 
   useEffect(() => {
     api.get('/company/crm-types')
-      .then(r => { if (r.data?.length) setCrmOpts(r.data.map(t => t.value)); })
+      .then(r => { if (r.data?.length) setCrmOpts(r.data.map(t => ({ value: t.value, label: t.label || t.value }))); })
       .catch(() => {});
   }, []);
 
@@ -161,7 +164,7 @@ export default function LeadModal({ lead: initial, onClose, onSaved }) {
                 <label>CRM de Interesse</label>
                 <select value={form.crm} onChange={e => { set('crm', e.target.value); set('plano_id',''); }}>
                   <option value="">Selecione…</option>
-                  {crmOpts.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase()+c.slice(1)}</option>)}
+                  {crmOpts.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </select>
               </div>
               <div className="form-group">

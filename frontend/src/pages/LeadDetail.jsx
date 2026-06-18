@@ -2,9 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api';
 import LeadModal from '../components/LeadModal';
-
-const CRM_LABEL  = { saude:'CRM Saúde', spa:'CRM Spa', esportes:'CRM Esportes', pet:'CRM Pet' };
-const CRM_BADGE  = { saude:'badge-saude', spa:'badge-spa', esportes:'badge-esportes', pet:'badge-pet' };
+import { useCrmTypes } from '../CrmTypesContext';
 const STAGE_LABEL= { prospeccao:'Prospecção', negociacao:'Negociação', piloto:'Piloto / Teste', producao:'Produção', perdido:'Perdido', cancelado:'Cancelado' };
 const SCORE_ICON = { muito_quente:'🔥 Muito quente', quente:'🌶️ Quente', morno:'⚡ Morno', frio:'💧 Frio', muito_frio:'❄️ Muito frio' };
 const TIPO_ICON  = {
@@ -327,6 +325,7 @@ function WhatsAppTab({ leadId, leadName, chats, setChats, viewing, setViewing })
 }
 
 export default function LeadDetail() {
+  const { crmLabel, crmBadgeClass } = useCrmTypes();
   const { id } = useParams();
   const nav    = useNavigate();
   const [lead,    setLead]    = useState(null);
@@ -440,7 +439,7 @@ export default function LeadDetail() {
           <div style={{flex:1}}>
             <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:8, flexWrap:'wrap'}}>
               <h1 style={{fontSize:22, fontWeight:800}}>{lead.empresa || lead.nome}</h1>
-              {lead.crm && <span className={`badge ${CRM_BADGE[lead.crm]}`}>{CRM_LABEL[lead.crm]}</span>}
+              {lead.crm && <span className={`badge ${crmBadgeClass(lead.crm)}`}>{crmLabel(lead.crm)}</span>}
               <span className={`badge badge-${lead.stage}`}>{STAGE_LABEL[lead.stage]||lead.stage}</span>
               {lead.score && <span style={{fontSize:14}} title={lead.score}>{SCORE_ICON[lead.score]}</span>}
               <span style={{
