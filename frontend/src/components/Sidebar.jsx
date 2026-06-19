@@ -188,30 +188,7 @@ export default function Sidebar() {
         )}
       </nav>
 
-      {/* Trial banner */}
-      {(() => {
-        const trialEnd = company?.trial_ends_at;
-        if (!trialEnd || company?.plan !== 'trial') return null;
-        const dias = Math.ceil((new Date(trialEnd) - Date.now()) / 86400000);
-        if (dias <= 0) return (
-          <div style={{ margin:'8px 8px 0', padding:'10px 12px',
-            background:'rgba(239,68,68,.15)', borderRadius:'var(--radius)',
-            border:'1px solid rgba(239,68,68,.3)', fontSize:11 }}>
-            <div style={{ color:'#f87171', fontWeight:700 }}>⚠️ Trial expirado</div>
-            <div style={{ color:'var(--muted)', marginTop:2 }}>Entre em contato para continuar.</div>
-          </div>
-        );
-        if (dias > 14) return null;
-        const cor = dias <= 3 ? 'rgba(239,68,68,.15)' : 'rgba(251,191,36,.1)';
-        const txt = dias <= 3 ? '#f87171' : 'var(--warning)';
-        return (
-          <div style={{ margin:'8px 8px 0', padding:'10px 12px', background:cor,
-            borderRadius:'var(--radius)', border:'1px solid ' + txt + '40', fontSize:11 }}>
-            <div style={{ color:txt, fontWeight:700 }}>⏳ {dias} dia{dias!==1?'s':''} de trial</div>
-            <div style={{ color:'var(--muted)', marginTop:2 }}>Fale com a gente para assinar.</div>
-          </div>
-        );
-      })()}
+      {/* Trial banner removido — modelo sem período de trial */}
 
       <div className="sidebar-footer">
         <div style={{ fontSize:12, color:'var(--muted)', marginBottom:2 }}>{user?.name}</div>
