@@ -159,6 +159,7 @@ function TabConfig({ role }) {
   const [crmTypes, setCrmTypes] = useState(DEFAULT_TYPES);
   const [newLabel, setNewLabel] = useState('');
   const [newIcon,  setNewIcon]  = useState('🏢');
+  const [addErr,   setAddErr]   = useState('');
   const [wa, setWa]             = useState({ whatsapp_api_url:'', whatsapp_api_token:'', whatsapp_instance:'' });
   const [waStatus, setWaStatus] = useState(null);
   const [testingWa, setTestingWa] = useState(false);
@@ -173,11 +174,16 @@ function TabConfig({ role }) {
   }, []);
 
   function addType() {
-    const label = newLabel.trim(); if (!label) return;
+    const label = newLabel.trim();
+    if (!label) { setAddErr('Digite um nome para o segmento.'); return; }
     const value = slugify(label);
-    if (crmTypes.find(t => t.value === value)) return;
+    if (!value) { setAddErr('Nome inválido — use letras ou números.'); return; }
+    if (crmTypes.find(t => t.value === value)) {
+      setAddErr(`Já existe um segmento com o identificador "${value}". Use um nome diferente.`);
+      return;
+    }
     setCrmTypes(p => [...p, { value, label, icon: newIcon }]);
-    setNewLabel(''); setNewIcon('🏢');
+    setNewLabel(''); setNewIcon('🏢'); setAddErr('');
   }
   function removeType(val) { setCrmTypes(p => p.filter(t => t.value !== val)); }
   function updateType(val, field, v) { setCrmTypes(p => p.map(t => t.value === val ? { ...t, [field]: v } : t)); }
@@ -233,12 +239,30 @@ function TabConfig({ role }) {
           ))}
         </div>
         {isAdmin && (
-          <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-            <select value={newIcon} onChange={e => setNewIcon(e.target.value)} style={{ width:54, fontSize:18, textAlign:'center', padding:'2px' }}>
-              {ICONS.map(ic => <option key={ic} value={ic}>{ic}</option>)}
-            </select>
-            <input value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="Novo segmento…" style={{ flex:1, fontSize:13 }} onKeyDown={e => e.key==='Enter' && (e.preventDefault(), addType())} />
-            <button className="btn btn-primary" style={{ fontSize:13, padding:'8px 14px' }} onClick={addType} disabled={!newLabel.trim()}>+ Adicionar</button>
+          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+              <select value={newIcon} onChange={e => setNewIcon(e.target.value)} style={{ width:54, fontSize:18, textAlign:'center', padding:'2px', flex:'none' }}>
+                {ICONS.map(ic => <option key={ic} value={ic}>{ic}</option>)}
+              </select>
+              <input
+                value={newLabel}
+                onChange={e => { setNewLabel(e.target.value); setAddErr(''); }}
+                placeholder="Nome do segmento (ex: Locação Residencial)"
+                style={{ flex:1, fontSize:13, borderColor: addErr ? 'var(--danger)' : undefined }}
+                onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addType())}
+              />
+              <button className="btn btn-primary" style={{ fontSize:13, padding:'8px 14px', flex:'none' }} onClick={addType}>
+                + Adicionar
+              </button>
+            </div>
+            {newLabel && (
+              <div style={{ fontSize:11, color:'var(--muted)', paddingLeft:62 }}>
+                Identificador interno: <code style={{ color:'var(--accent)' }}>{slugify(newLabel) || '…'}</code>
+              </div>
+            )}
+            {addErr && (
+              <div style={{ fontSize:12, color:'var(--danger)', paddingLeft:62 }}>{addErr}</div>
+            )}
           </div>
         )}
       </div>

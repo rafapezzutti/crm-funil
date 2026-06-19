@@ -124,7 +124,7 @@ router.post('/impersonate', masterOnly, async (req, res) => {
 
 // POST /api/master/companies — criar empresa + usuário admin
 router.post('/companies', masterOnly, async (req, res) => {
-  const { name, cnpj, telefone, email, password, plan = 'trial', status = 'ativo' } = req.body;
+  const { name, cnpj, telefone, email, password, plan = 'ativo', status = 'ativo' } = req.body;
   if (!name?.trim())     return res.status(400).json({ error: 'Nome é obrigatório.' });
   if (!email?.trim())    return res.status(400).json({ error: 'E-mail é obrigatório.' });
   if (!password)         return res.status(400).json({ error: 'Senha é obrigatória.' });

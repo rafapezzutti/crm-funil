@@ -3,7 +3,8 @@ import api from '../api';
 import { useAuth } from '../AuthContext';
 import { useNavigate } from 'react-router-dom';
 
-const EMPTY_FORM = { name:'', cnpj:'', telefone:'', email:'', password:'', confirmPassword:'', status:'ativo' };
+const EMPTY_FORM = { name:'', cnpj:'', telefone:'', email:'', password:'', confirmPassword:'', plan:'ativo', status:'ativo' };
+const PLAN_OPTS = ['ativo','mensal','anual','master'];
 
 function Field({ label, children }) {
   return (
@@ -26,7 +27,7 @@ function CompanyModal({ company, onClose, onSave }) {
   const [form,    setForm]    = useState(
     company
       ? { name: company.name, cnpj: company.cnpj || '', telefone: company.telefone || '',
-          email:'', password:'', confirmPassword:'', status: company.status || 'ativo' }
+          email:'', password:'', confirmPassword:'', plan: company.plan || 'ativo', status: company.status || 'ativo' }
       : EMPTY_FORM
   );
   const [saving,  setSaving]  = useState(false);
@@ -47,8 +48,8 @@ function CompanyModal({ company, onClose, onSave }) {
     setSaving(true); setError('');
     try {
       const payload = isNew
-        ? { name: form.name, cnpj: form.cnpj, telefone: form.telefone, email: form.email, password: form.password, status: form.status }
-        : { name: form.name, cnpj: form.cnpj, telefone: form.telefone, status: form.status };
+        ? { name: form.name, cnpj: form.cnpj, telefone: form.telefone, email: form.email, password: form.password, plan: form.plan, status: form.status }
+        : { name: form.name, cnpj: form.cnpj, telefone: form.telefone, plan: form.plan, status: form.status };
       const { data } = isNew
         ? await api.post('/master/companies', payload)
         : await api.put('/master/companies/' + company.id, payload);
@@ -111,6 +112,20 @@ function CompanyModal({ company, onClose, onSave }) {
             </div>
           </>
         )}
+
+        <Field label="Plano">
+          <div style={{ display:'flex', gap:8, marginTop:2, flexWrap:'wrap' }}>
+            {PLAN_OPTS.map(p => (
+              <button key={p} onClick={() => setForm(f => ({ ...f, plan: p }))} style={{
+                padding:'6px 14px', borderRadius:20, fontSize:12, fontWeight:700, cursor:'pointer',
+                border: '2px solid ' + (form.plan === p ? 'var(--accent)' : 'var(--border)'),
+                background: form.plan === p ? 'rgba(0,223,196,.12)' : 'var(--card2)',
+                color: form.plan === p ? 'var(--accent)' : 'var(--muted)',
+                textTransform:'capitalize',
+              }}>{p}</button>
+            ))}
+          </div>
+        </Field>
 
         <Field label="Status">
           <div style={{ display:'flex', gap:8, marginTop:2 }}>
