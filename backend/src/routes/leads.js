@@ -313,6 +313,79 @@ router.post('/prospecting-sync', async (req, res) => {
   }
 });
 
+// ── POST /api/leads/register-followup ────────────────────────────────────────
+// Webhook sem JWT — registra atividades de follow-up agendado (D2/D5/D10)
+// Body: { token, data, followups: [{nome, telefone, crm, milestone, mensagem_sugerida}] }
+router.options('/register-followup', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.sendStatus(204);
+});
+
+router.post('/register-followup', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  try {
+    const { token, data, followups } = req.body;
+
+    const syncToken = process.env.PROSPECTING_SYNC_TOKEN;
+    if (!syncToken || token !== syncToken) {
+      return res.status(401).json({ error: 'Token inválido.' });
+    }
+
+    const defaultCompanyId = process.env.PROSPECTING_COMPANY_ID;
+    if (!defaultCompanyId) {
+      return res.status(500).json({ error: 'PROSPECTING_COMPANY_ID não configurado.' });
+    }
+
+    const CRM_COMPANY_MAP = {
+      'pet':      process.env.PROSPECTING_COMPANY_ID_PETS  || defaultCompanyId,
+      'pets':     process.env.PROSPECTING_COMPANY_ID_PETS  || defaultCompanyId,
+      'saude':    process.env.PROSPECTING_COMPANY_ID_SAUDE || defaultCompanyId,
+      'saúde':    process.env.PROSPECTING_COMPANY_ID_SAUDE || defaultCompanyId,
+    };
+
+    if (!Array.isArray(followups) || followups.length === 0) {
+      return res.json({ ok: true, registrados: 0, nao_encontrados: 0 });
+    }
+
+    let registrados = 0, nao_encontrados = 0;
+
+    for (const f of followups) {
+      const companyId = CRM_COMPANY_MAP[(f.crm || '').toLowerCase()] || defaultCompanyId;
+      const telNum = (f.telefone || f.whatsapp || '').replace(/\D/g, '');
+      if (!telNum) { nao_encontrados++; continue; }
+
+      const [lead] = await sql`
+        SELECT id FROM leads
+        WHERE company_id = ${companyId}::uuid
+          AND regexp_replace(COALESCE(telefone,''), '[^0-9]', '', 'g') = ${telNum}
+        LIMIT 1`;
+
+      if (!lead) { nao_encontrados++; continue; }
+
+      const milestone = (f.milestone || 'D?').toUpperCase();
+      const descricao = `Follow-up ${milestone} agendado — ${f.mensagem_sugerida || ''}`.trim();
+
+      await sql`
+        INSERT INTO lead_activities (lead_id, tipo, descricao, dados)
+        VALUES (
+          ${lead.id},
+          'followup_agendado',
+          ${descricao},
+          ${JSON.stringify({ milestone, data, nome: f.nome, crm: f.crm })}
+        )`;
+
+      registrados++;
+    }
+
+    res.json({ ok: true, registrados, nao_encontrados, data });
+  } catch (err) {
+    console.error('[register-followup]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── GET /api/leads/:id ────────────────────────────────────────────────────────
 router.get('/:id', auth, async (req, res) => {
   try {
