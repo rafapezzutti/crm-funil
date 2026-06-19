@@ -49,9 +49,6 @@ function TabEmpresa({ company, user, role }) {
     finally { setInviting(false); }
   }
 
-  const trialDias = company?.trial_ends_at
-    ? Math.ceil((new Date(company.trial_ends_at) - Date.now()) / 86400000) : null;
-
   const ROLE_LABEL = { admin:'Admin', master:'Master', vendedor:'Vendedor' };
 
   return (
@@ -67,19 +64,11 @@ function TabEmpresa({ company, user, role }) {
       {/* Plano */}
       <div className="card" style={{ padding:16 }}>
         <div style={{ fontWeight:700, fontSize:14, marginBottom:10 }}>📋 Plano</div>
-        <div style={{ display:'flex', gap:24, flexWrap:'wrap' }}>
-          <div>
-            <div style={{ fontSize:11, color:'var(--muted)', marginBottom:2 }}>Plano atual</div>
-            <div style={{ fontWeight:700, textTransform:'uppercase', color:'var(--accent)', fontSize:15 }}>{company?.plan || 'trial'}</div>
+        <div>
+          <div style={{ fontSize:11, color:'var(--muted)', marginBottom:2 }}>Plano atual</div>
+          <div style={{ fontWeight:700, textTransform:'uppercase', color:'var(--accent)', fontSize:15 }}>
+            {company?.plan === 'trial' ? 'Ativo' : (company?.plan || 'Ativo')}
           </div>
-          {trialDias !== null && company?.plan === 'trial' && (
-            <div>
-              <div style={{ fontSize:11, color:'var(--muted)', marginBottom:2 }}>Trial</div>
-              <div style={{ fontWeight:700, color: trialDias <= 3 ? 'var(--danger)' : 'var(--warning)' }}>
-                {trialDias > 0 ? trialDias + ' dias restantes' : 'Expirado'}
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
