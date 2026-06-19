@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../AuthContext';
 import api from '../api';
 
@@ -142,6 +142,160 @@ function TabEmpresa({ company, user, role }) {
   );
 }
 
+// ── WhatsApp Connect Component ────────────────────────────────────────────────
+function WhatsAppConnect({ isAdmin }) {
+  const [status,       setStatus]       = useState(null);   // null | { connected, state, phone, instanceName }
+  const [qr,           setQr]           = useState(null);   // base64 string do QR code
+  const [loading,      setLoading]      = useState(true);
+  const [connecting,   setConnecting]   = useState(false);
+  const [disconnecting,setDisconnecting]= useState(false);
+  const [err,          setErr]          = useState('');
+
+  // Polling interval ref
+  const pollRef = useRef(null);
+
+  // Busca status ao montar e a cada 5s enquanto QR estiver visível
+  async function fetchStatus() {
+    try {
+      const { data } = await api.get('/whatsapp/evolution/status');
+      setStatus(data);
+      if (data.connected) {
+        setQr(null);
+        clearInterval(pollRef.current);
+      }
+    } catch (_) {}
+  }
+
+  useEffect(() => {
+    fetchStatus().finally(() => setLoading(false));
+    return () => clearInterval(pollRef.current);
+  }, []);
+
+  // Inicia polling enquanto aguarda conexão
+  function startPolling() {
+    clearInterval(pollRef.current);
+    pollRef.current = setInterval(fetchStatus, 5000);
+  }
+
+  async function handleConnect() {
+    setConnecting(true); setErr(''); setQr(null);
+    try {
+      const { data } = await api.post('/whatsapp/evolution/connect');
+      setQr(data.qr || null);
+      setStatus(s => ({ ...s, connected: false, state: 'qrcode' }));
+      startPolling();
+    } catch (e) {
+      setErr(e.response?.data?.error || 'Erro ao gerar QR code.');
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  async function handleDisconnect() {
+    if (!confirm('Desconectar o WhatsApp desta empresa?')) return;
+    setDisconnecting(true); setErr('');
+    try {
+      await api.delete('/whatsapp/evolution/disconnect');
+      setStatus(s => ({ ...s, connected: false, state: 'disconnected', phone: null }));
+      setQr(null);
+      clearInterval(pollRef.current);
+    } catch (e) {
+      setErr(e.response?.data?.error || 'Erro ao desconectar.');
+    } finally {
+      setDisconnecting(false);
+    }
+  }
+
+  async function handleRefreshQr() {
+    setErr('');
+    try {
+      const { data } = await api.post('/whatsapp/evolution/connect');
+      setQr(data.qr || null);
+    } catch (e) {
+      setErr(e.response?.data?.error || 'Erro ao atualizar QR.');
+    }
+  }
+
+  if (loading) {
+    return <div style={{ fontSize:13, color:'var(--muted)', padding:'12px 0' }}>Verificando conexão…</div>;
+  }
+
+  const connected = status?.connected;
+
+  return (
+    <div>
+      {/* Status badge */}
+      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
+        <span style={{
+          display:'inline-flex', alignItems:'center', gap:6,
+          padding:'5px 12px', borderRadius:20, fontSize:12, fontWeight:700,
+          background: connected ? 'rgba(16,185,129,.15)' : qr ? 'rgba(251,191,36,.12)' : 'rgba(107,114,128,.1)',
+          color:      connected ? 'var(--success)'       : qr ? 'var(--warning)'        : 'var(--muted)',
+        }}>
+          <span style={{ width:8, height:8, borderRadius:'50%', background:'currentColor', display:'inline-block' }} />
+          {connected ? `Conectado · ${formatWaPhone(status.phone)}` : qr ? 'Aguardando leitura do QR…' : 'Desconectado'}
+        </span>
+        {status?.instanceName && (
+          <span style={{ fontSize:11, color:'var(--muted)', fontFamily:'monospace' }}>
+            instância: {status.instanceName}
+          </span>
+        )}
+      </div>
+
+      {/* QR Code */}
+      {qr && !connected && (
+        <div style={{ marginBottom:16 }}>
+          <div style={{ fontSize:12, color:'var(--muted)', marginBottom:8 }}>
+            Abra o WhatsApp no celular → <strong>Dispositivos vinculados → Vincular dispositivo</strong> → aponte para o QR abaixo:
+          </div>
+          <div style={{ display:'flex', gap:12, alignItems:'flex-start', flexWrap:'wrap' }}>
+            <img
+              src={qr.startsWith('data:') ? qr : `data:image/png;base64,${qr}`}
+              alt="QR Code WhatsApp"
+              style={{ width:180, height:180, borderRadius:8, border:'2px solid var(--border)', background:'#fff' }}
+            />
+            <div style={{ display:'flex', flexDirection:'column', gap:8, paddingTop:4 }}>
+              <div style={{ fontSize:12, color:'var(--muted)' }}>O QR expira em ~60 segundos.</div>
+              <button className="btn btn-ghost" style={{ fontSize:12 }} onClick={handleRefreshQr}>
+                🔄 Novo QR
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Ações */}
+      {isAdmin && (
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+          {!connected && (
+            <button className="btn btn-primary" style={{ fontSize:13 }} onClick={handleConnect} disabled={connecting}>
+              {connecting ? '⏳ Gerando QR…' : qr ? '🔄 Reconectar' : '📱 Conectar WhatsApp'}
+            </button>
+          )}
+          {connected && (
+            <button className="btn btn-ghost" style={{ fontSize:13, color:'var(--danger)' }} onClick={handleDisconnect} disabled={disconnecting}>
+              {disconnecting ? '⏳…' : '🔌 Desconectar'}
+            </button>
+          )}
+          {err && <span style={{ fontSize:12, color:'var(--danger)' }}>{err}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatWaPhone(raw) {
+  if (!raw) return '—';
+  const digits = raw.replace(/\D/g, '');
+  // Formato BR: +55 (XX) XXXXX-XXXX
+  if (digits.length === 13 && digits.startsWith('55')) {
+    const ddd = digits.slice(2, 4);
+    const num = digits.slice(4);
+    return `+55 (${ddd}) ${num.slice(0, 5)}-${num.slice(5)}`;
+  }
+  return `+${digits}`;
+}
+
 // ── Aba 2: Configurações gerais ───────────────────────────────────────────────
 function TabConfig({ role }) {
   const isAdmin = ['admin','master'].includes(role);
@@ -149,16 +303,12 @@ function TabConfig({ role }) {
   const [newLabel, setNewLabel] = useState('');
   const [newIcon,  setNewIcon]  = useState('🏢');
   const [addErr,   setAddErr]   = useState('');
-  const [wa, setWa]             = useState({ whatsapp_api_url:'', whatsapp_api_token:'', whatsapp_instance:'' });
-  const [waStatus, setWaStatus] = useState(null);
-  const [testingWa, setTestingWa] = useState(false);
-  const [saving, setSaving]     = useState(false);
-  const [msg, setMsg]           = useState('');
+  const [saving,   setSaving]   = useState(false);
+  const [msg,      setMsg]      = useState('');
 
   useEffect(() => {
     api.get('/company/settings').then(r => {
       if (r.data.crm_types?.length) setCrmTypes(r.data.crm_types);
-      setWa({ whatsapp_api_url: r.data.whatsapp_api_url||'', whatsapp_api_token: r.data.whatsapp_api_token||'', whatsapp_instance: r.data.whatsapp_instance||'' });
     }).catch(() => {});
   }, []);
 
@@ -179,16 +329,9 @@ function TabConfig({ role }) {
 
   async function saveAll() {
     setSaving(true);
-    try { await api.put('/company/settings', { crm_types: crmTypes, ...wa }); setMsg('✅ Salvo!'); }
+    try { await api.put('/company/settings', { crm_types: crmTypes }); setMsg('✅ Salvo!'); }
     catch (err) { setMsg('❌ ' + (err.response?.data?.error || 'Erro.')); }
     finally { setSaving(false); }
-  }
-
-  async function testWhatsapp() {
-    setTestingWa(true); setWaStatus(null);
-    try { const { data } = await api.post('/company/settings/test-whatsapp', wa); setWaStatus(data); }
-    catch (err) { setWaStatus({ connected:false, message: err.response?.data?.error||'Não conectou.' }); }
-    finally { setTestingWa(false); }
   }
 
   return (
@@ -256,34 +399,13 @@ function TabConfig({ role }) {
         )}
       </div>
 
-      {/* WhatsApp Evolution API */}
+      {/* WhatsApp via QR Code */}
       <div className="card" style={{ padding:16 }}>
-        <div style={{ fontWeight:700, fontSize:14, marginBottom:4 }}>📱 WhatsApp via Evolution API</div>
-        <div style={{ fontSize:12, color:'var(--muted)', marginBottom:14 }}>Instância própria da Evolution API. Recomendado para robôs de prospecção em escala.</div>
-        <div style={{ display:'grid', gap:12 }}>
-          <label>
-            <div style={{ fontSize:12, color:'var(--muted)', marginBottom:4 }}>URL da API</div>
-            <input value={wa.whatsapp_api_url} disabled={!isAdmin} onChange={e => setWa(p => ({...p, whatsapp_api_url:e.target.value}))} placeholder="https://sua-evolution-api.fly.dev" style={{ width:'100%' }} />
-          </label>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-            <label>
-              <div style={{ fontSize:12, color:'var(--muted)', marginBottom:4 }}>Nome da instância</div>
-              <input value={wa.whatsapp_instance} disabled={!isAdmin} onChange={e => setWa(p => ({...p, whatsapp_instance:e.target.value}))} placeholder="minha-empresa" style={{ width:'100%' }} />
-            </label>
-            <label>
-              <div style={{ fontSize:12, color:'var(--muted)', marginBottom:4 }}>Token (apikey)</div>
-              <input value={wa.whatsapp_api_token} disabled={!isAdmin} type="password" onChange={e => setWa(p => ({...p, whatsapp_api_token:e.target.value}))} placeholder="••••••••••••" style={{ width:'100%' }} />
-            </label>
-          </div>
-          {isAdmin && (
-            <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
-              <button className="btn btn-ghost" style={{ fontSize:13 }} onClick={testWhatsapp} disabled={testingWa || !wa.whatsapp_api_url}>
-                {testingWa ? '⏳ Testando…' : '🔌 Testar conexão'}
-              </button>
-              {waStatus && <span style={{ fontSize:13, color: waStatus.connected ? 'var(--success)' : 'var(--warning)' }}>{waStatus.message || waStatus.error}</span>}
-            </div>
-          )}
+        <div style={{ fontWeight:700, fontSize:14, marginBottom:4 }}>📱 WhatsApp</div>
+        <div style={{ fontSize:12, color:'var(--muted)', marginBottom:16 }}>
+          Conecte o WhatsApp da sua empresa para receber respostas de leads diretamente no CRM.
         </div>
+        <WhatsAppConnect isAdmin={isAdmin} />
       </div>
 
     </div>

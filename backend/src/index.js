@@ -27,7 +27,11 @@ app.use(helmet());
 
 const allowedOrigins = [process.env.FRONTEND_URL || 'http://localhost:5173'];
 app.use((req, res, next) => {
-  if (req.path.startsWith('/api/leads/prospecting-sync')) {
+  // Rotas sem restrição de origem (chamadas de serviços externos)
+  if (
+    req.path.startsWith('/api/leads/prospecting-sync') ||
+    req.path === '/api/whatsapp/webhook'
+  ) {
     return cors({ origin: true, credentials: false })(req, res, next);
   }
   return cors({
@@ -86,11 +90,4 @@ app.listen(PORT, async () => {
   console.log(`🚀  API running on port ${PORT}`);
   try {
     await ensureSchema();
-    console.log('✅  Schema OK');
-  } catch (e) {
-    console.error('❌  Schema error:', e.message);
-  }
-  startCronScheduler();
-});
-
-
+    console.log
