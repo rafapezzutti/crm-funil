@@ -152,7 +152,13 @@ function WhatsAppConnect({ isAdmin }) {
   const [err,          setErr]          = useState('');
 
   // Polling interval ref
-  const pollRef = useRef(null);
+  const pollRef      = useRef(null);
+  const qrRefreshRef = useRef(null);
+
+  function stopAll() {
+    clearInterval(pollRef.current);
+    clearInterval(qrRefreshRef.current);
+  }
 
   // Busca status ao montar e a cada 5s enquanto QR estiver visível
   async function fetchStatus() {
@@ -161,24 +167,25 @@ function WhatsAppConnect({ isAdmin }) {
       setStatus(data);
       if (data.connected) {
         setQr(null);
-        clearInterval(pollRef.current);
+        stopAll();
       }
     } catch (_) {}
   }
 
   useEffect(() => {
     fetchStatus().finally(() => setLoading(false));
-    return () => clearInterval(pollRef.current);
+    return () => stopAll();
   }, []);
 
-  // Inicia polling enquanto aguarda conexão
+  // Inicia polling de status (5s) + auto-refresh do QR (55s — expira em ~60s)
   function startPolling() {
-    clearInterval(pollRef.current);
-    pollRef.current = setInterval(fetchStatus, 5000);
+    stopAll();
+    pollRef.current      = setInterval(fetchStatus,    5000);
+    qrRefreshRef.current = setInterval(handleRefreshQr, 55000);
   }
 
   async function handleConnect() {
-    setConnecting(true); setErr(''); setQr(null);
+    setConnecting(true); setErr(''); setQr(null); stopAll();
     try {
       const { data } = await api.post('/whatsapp/evolution/connect');
       setQr(data.qr || null);
@@ -198,7 +205,7 @@ function WhatsAppConnect({ isAdmin }) {
       await api.delete('/whatsapp/evolution/disconnect');
       setStatus(s => ({ ...s, connected: false, state: 'disconnected', phone: null }));
       setQr(null);
-      clearInterval(pollRef.current);
+      stopAll();
     } catch (e) {
       setErr(e.response?.data?.error || 'Erro ao desconectar.');
     } finally {

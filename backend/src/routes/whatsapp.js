@@ -116,9 +116,9 @@ async function instanceExists(instanceName) {
   if (!r.ok) return false;
   const list = Array.isArray(r.data) ? r.data : (r.data ? [r.data] : []);
   return list.some(i =>
+    i?.name                   === instanceName ||
     i?.instance?.instanceName === instanceName ||
-    i?.instanceName           === instanceName ||
-    i?.name                   === instanceName
+    i?.instanceName           === instanceName
   );
 }
 
@@ -280,11 +280,12 @@ router.get('/evolution/status', async (req, res) => {
       if (infoRes.ok) {
         const list = Array.isArray(infoRes.data) ? infoRes.data : [infoRes.data];
         const inst = list.find(i =>
+          i?.name                   === instanceName ||
           i?.instance?.instanceName === instanceName ||
-          i?.instanceName           === instanceName ||
-          i?.name                   === instanceName
+          i?.instanceName           === instanceName
         );
-        const raw = inst?.instance?.owner || inst?.owner || null;
+        // Evolution API v2 usa ownerJid; versões antigas usam owner
+        const raw = inst?.ownerJid || inst?.instance?.owner || inst?.owner || null;
         if (raw) phone = raw.replace(/@s\.whatsapp\.net$/, '').replace(/@c\.us$/, '');
       }
     }
