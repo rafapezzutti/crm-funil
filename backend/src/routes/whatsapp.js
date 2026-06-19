@@ -229,15 +229,21 @@ router.post('/evolution/connect', async (req, res) => {
     // Pegar QR code
     const qrRes = await evoFetch(`/instance/connect/${encodeURIComponent(instanceName)}`);
 
-    // Normalizar formato — varia entre versões da Evolution API
-    const qr = qrRes.data?.code
-      || qrRes.data?.base64
+    // base64 é o PNG pronto para <img src>
+    // code é a string raw do QR (nao é imagem) — nao usar como src
+    const qrBase64 = qrRes.data?.base64
       || qrRes.data?.qrcode?.base64
       || null;
+
+    // Garantir prefixo data URI
+    const qr = qrBase64
+      ? (qrBase64.startsWith('data:') ? qrBase64 : 'data:image/png;base64,' + qrBase64)
+      : null;
 
     res.json({
       instanceName,
       qr,
+      qrCode: qrRes.data?.code || null,  // string raw, util para debug
       state: qrRes.data?.state || 'qrcode',
     });
   } catch (err) {
