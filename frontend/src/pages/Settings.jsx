@@ -286,16 +286,6 @@ function TabConfig({ role }) {
         </div>
       </div>
 
-      {/* WhatsApp Web via QR */}
-      <div className="card" style={{ padding:16, opacity:.7 }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
-          <div style={{ fontWeight:700, fontSize:14 }}>💬 WhatsApp Web (em breve)</div>
-          <span style={{ fontSize:11, background:'var(--card2)', padding:'2px 8px', borderRadius:20, color:'var(--muted)' }}>Em desenvolvimento</span>
-        </div>
-        <div style={{ fontSize:12, color:'var(--muted)' }}>
-          Conecte seu WhatsApp pessoal via QR Code. O robô poderá ler e enviar mensagens diretamente pelas suas conversas no WhatsApp Web, sem precisar de instância separada.
-        </div>
-      </div>
     </div>
   );
 }
