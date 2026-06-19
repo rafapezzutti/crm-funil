@@ -27,7 +27,7 @@ app.use(helmet());
 
 const allowedOrigins = [process.env.FRONTEND_URL || 'http://localhost:5173'];
 app.use((req, res, next) => {
-  // Rotas sem restrição de origem (chamadas de serviços externos)
+  // Rotas sem restricao de origem (chamadas de servicos externos)
   if (
     req.path.startsWith('/api/leads/prospecting-sync') ||
     req.path === '/api/whatsapp/webhook'
@@ -51,7 +51,7 @@ app.use(limiter);
 const authLimiter = rateLimit({ windowMs: 15*60*1000, max: 20,
   message: { error: 'Muitas tentativas. Tente novamente em 15 minutos.' } });
 
-// ── Rotas ─────────────────────────────────────────────────────────────────────
+// Routes
 app.use('/api/auth',        authLimiter, authRoutes);
 app.use('/api/leads',       leadRoutes);
 app.use('/api/plans',       planRoutes);
@@ -65,7 +65,7 @@ app.use('/api/robots',      robotRoutes);
 app.use('/api/master',      masterRoutes);
 app.use('/api/prospecting', prospectingRoutes);
 
-// ── Setup endpoint ────────────────────────────────────────────────────────────
+// Setup endpoint
 app.get('/api/setup', async (req, res) => {
   try {
     const force = req.query.force === 'true';
@@ -76,18 +76,23 @@ app.get('/api/setup', async (req, res) => {
   }
 });
 
-// ── Health ────────────────────────────────────────────────────────────────────
+// Health
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
-app.use((_req, res) => res.status(404).json({ error: 'Rota não encontrada.' }));
+app.use((_req, res) => res.status(404).json({ error: 'Rota nao encontrada.' }));
 app.use((err, _req, res, _next) => {
   console.error(err);
   res.status(err.status || 500).json({ error: err.message || 'Erro interno.' });
 });
 
-// ── Inicialização ─────────────────────────────────────────────────────────────
+// Inicializacao
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, async () => {
-  console.log(`🚀  API running on port ${PORT}`);
+  console.log('API running on port ' + PORT);
   try {
     await ensureSchema();
-    console.log
+    console.log('Schema OK');
+  } catch (e) {
+    console.error('Schema error:', e.message);
+  }
+  startCronScheduler();
+});
