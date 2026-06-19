@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './AuthContext';
 import { CrmTypesProvider } from './CrmTypesContext';
 import Sidebar from './components/Sidebar';
+import SuspendedScreen from './pages/SuspendedScreen';
 import Login          from './pages/Login';
 import Dashboard      from './pages/Dashboard';
 import Funil          from './pages/Funil';
@@ -19,8 +20,9 @@ import Robos           from './pages/Robos';
 import MasterEmpresas  from './pages/MasterEmpresas';
 
 function PrivateRoute({ children }) {
-  const { user, loading } = useAuth();
+  const { user, loading, suspended, logout } = useAuth();
   if (loading) return null;
+  if (suspended) return <SuspendedScreen status={suspended} onLogout={logout} />;
   return user ? children : <Navigate to="/login" replace />;
 }
 

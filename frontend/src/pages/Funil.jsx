@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import LeadModal from '../components/LeadModal';
 import { useCrmTypes } from '../CrmTypesContext';
+import { useDebounce } from '../hooks/useDebounce';
 
 const STAGES = [
   { key:'prospeccao', label:'Prospecção',  color:'var(--stage-prospeccao)', icon:'🎯' },
@@ -142,12 +143,14 @@ export default function Funil() {
   const [moveDlg, setMoveDlg] = useState(null); // {lead, targetStage}
   const [motivo,  setMotivo]  = useState('');
 
-  useEffect(() => { load(); }, []);
+  const debouncedQ = useDebounce(q, 300);
+
+  useEffect(() => { load(); }, [debouncedQ, crmF, scoreF, origemF]);
 
   async function load() {
     setLoading(true);
     try {
-      const { data } = await api.get('/leads', { params: { q, crm: crmF, score: scoreF } });
+      const { data } = await api.get('/leads', { params: { q: debouncedQ, crm: crmF, score: scoreF } });
       let filtered = data.filter(l => l.stage !== 'cancelado');
       if (origemF) filtered = filtered.filter(l => l.origem === origemF);
       setLeads(filtered);
@@ -192,7 +195,7 @@ export default function Funil() {
 
       {/* Filtros */}
       <div style={{display:'flex', gap:8, marginBottom:20, flexWrap:'wrap'}}>
-        <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key==='Enter' && load()}
+        <input value={q} onChange={e => setQ(e.target.value)}
           placeholder="🔍 Buscar por nome ou empresa…"
           style={{width:260, flex:'none'}} />
         <select value={crmF} onChange={e => { setCrmF(e.target.value); }} style={{width:140, flex:'none'}}>

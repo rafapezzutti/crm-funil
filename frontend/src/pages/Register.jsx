@@ -15,12 +15,15 @@ const SEGMENTS = [
 export default function Register() {
   const { login }   = useAuth();
   const navigate    = useNavigate();
-  const [step, setStep]     = useState(1);
-  const [form, setForm]     = useState({ name:'', email:'', password:'', companyName:'', segment:'saude' });
-  const [error, setError]   = useState('');
-  const [loading, setLoading] = useState(false);
+  const [step, setStep]         = useState(1);
+  const [form, setForm]         = useState({ name:'', email:'', password:'', companyName:'', segment:'saude' });
+  const [confirmPwd, setConfirmPwd] = useState('');
+  const [error, setError]       = useState('');
+  const [loading, setLoading]   = useState(false);
 
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
+
+  const pwdMatch = confirmPwd === '' ? null : form.password === confirmPwd;
 
   function nextStep(e) {
     e.preventDefault();
@@ -28,6 +31,7 @@ export default function Register() {
       setError('Preencha todos os campos.'); return;
     }
     if (form.password.length < 6) { setError('Senha deve ter ao menos 6 caracteres.'); return; }
+    if (!confirmPwd || form.password !== confirmPwd) { setError('As senhas não coincidem.'); return; }
     setError('');
     setStep(2);
   }
@@ -71,6 +75,21 @@ export default function Register() {
             </label>
             <label className={styles.label}>Senha
               <input type="password" value={form.password} onChange={set('password')} required placeholder="Mínimo 6 caracteres" />
+            </label>
+            <label className={styles.label}>
+              <span style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                Confirmar senha
+                {pwdMatch === true  && <span style={{ color:'var(--success)', fontSize:12 }}>✓ Senhas iguais</span>}
+                {pwdMatch === false && <span style={{ color:'var(--danger)',  fontSize:12 }}>✗ Senhas diferentes</span>}
+              </span>
+              <input
+                type="password"
+                value={confirmPwd}
+                onChange={e => setConfirmPwd(e.target.value)}
+                required
+                placeholder="Repita a senha"
+                style={{ borderColor: pwdMatch === false ? 'var(--danger)' : pwdMatch === true ? 'var(--success)' : undefined }}
+              />
             </label>
             <label className={styles.label}>Nome da empresa
               <input value={form.companyName} onChange={set('companyName')} required placeholder="Clínica XYZ" />

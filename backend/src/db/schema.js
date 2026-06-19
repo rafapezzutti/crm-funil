@@ -216,6 +216,10 @@ async function ensureSchema(force = false) {
   await runSafe('robots_queued_at_col', () => sql`
     ALTER TABLE robots ADD COLUMN IF NOT EXISTS queued_at TIMESTAMPTZ DEFAULT NULL`);
 
+  // Migração: coluna para invalidar JWTs após reset de senha
+  await runSafe('users_password_changed_at', () => sql`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ DEFAULT NULL`);
+
   // Logs de execução de robôs
   results.push(await runSafe('robot_logs', () => sql`
     CREATE TABLE IF NOT EXISTS robot_logs (

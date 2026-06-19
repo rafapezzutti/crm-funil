@@ -13,6 +13,7 @@ export function AuthProvider({ children }) {
   const [company,   setCompany]   = useState(null);
   const [companies, setCompanies] = useState([]);
   const [loading,   setLoading]   = useState(true);
+  const [suspended, setSuspended] = useState(null); // 'suspenso' | 'inativo' | null
 
   const [impersonating,   setImpersonating]   = useState(false);
   const [originalToken,   setOriginalToken]   = useState(null);
@@ -45,6 +46,7 @@ export function AuthProvider({ children }) {
       .then(({ data }) => {
         setUser(data.user);
         setCompanies(data.companies);
+        setSuspended(null); // empresa ativa — limpa estado
 
         // Prioridade: 1) companyId do JWT  2) id salvo no localStorage  3) empresa master  4) primeira
         const payload  = decodeToken(token);
@@ -62,7 +64,13 @@ export function AuthProvider({ children }) {
         // Sincroniza localStorage com a empresa resolvida
         if (comp) localStorage.setItem('company', JSON.stringify(comp));
       })
-      .catch(() => {
+      .catch((err) => {
+        const data = err?.response?.data;
+        if (err?.response?.status === 403 && data?.code === 'company_suspended') {
+          setSuspended(data.status || 'suspenso');
+          setLoading(false);
+          return; // mantém o token — usuário pode contatar suporte
+        }
         localStorage.removeItem('token');
         localStorage.removeItem('company');
       })
@@ -126,11 +134,12 @@ export function AuthProvider({ children }) {
     setUser(null);
     setCompany(null);
     setCompanies([]);
+    setSuspended(null);
   }
 
   return (
     <AuthContext.Provider value={{
-      user, company, companies, loading, role,
+      user, company, companies, loading, role, suspended,
       login, logout, switchCompany,
       impersonating, impersonate, exitImpersonation,
     }}>

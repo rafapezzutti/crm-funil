@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useCrmTypes } from '../CrmTypesContext';
+import { useDebounce } from '../hooks/useDebounce';
 
 function fmt(v) {
   return Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:2});
@@ -16,13 +17,15 @@ export default function Producao() {
   const [crmF,   setCrmF]   = useState('');
   const [q,      setQ]      = useState('');
 
-  useEffect(() => { load(); }, []);
+  const debouncedQ = useDebounce(q, 300);
+
+  useEffect(() => { load(); }, [debouncedQ, crmF]);
 
   async function load() {
     setLoading(true);
     try {
       const [l, m] = await Promise.all([
-        api.get('/leads', { params:{ stage:'producao', crm: crmF || undefined, q: q||undefined }}),
+        api.get('/leads', { params:{ stage:'producao', crm: crmF || undefined, q: debouncedQ||undefined }}),
         api.get('/dashboard/mrr'),
       ]);
       setLeads(l.data);
@@ -59,13 +62,12 @@ export default function Producao() {
 
       {/* Filtros */}
       <div style={{display:'flex', gap:8, marginBottom:16}}>
-        <input value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>e.key==='Enter'&&load()}
+        <input value={q} onChange={e=>setQ(e.target.value)}
           placeholder="🔍 Buscar…" style={{width:240, flex:'none'}} />
         <select value={crmF} onChange={e=>setCrmF(e.target.value)} style={{width:160, flex:'none'}}>
           <option value="">Todos os CRMs</option>
           {types.map(t=><option key={t.value} value={t.value}>{crmLabel(t.value)}</option>)}
         </select>
-        <button className="btn btn-ghost" onClick={load}>Filtrar</button>
       </div>
 
       {/* Tabela */}

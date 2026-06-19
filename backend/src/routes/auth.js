@@ -7,6 +7,23 @@ const { Resend } = require('resend');
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+// ── Rate limiting para forgot-password (3 tentativas / IP / 15min) ────────────
+const forgotRateMap = new Map(); // ip → { count, resetAt }
+const FORGOT_MAX = 3;
+const FORGOT_WINDOW_MS = 15 * 60 * 1000; // 15 minutos
+
+function checkForgotRate(ip) {
+  const now = Date.now();
+  const entry = forgotRateMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    forgotRateMap.set(ip, { count: 1, resetAt: now + FORGOT_WINDOW_MS });
+    return true;
+  }
+  if (entry.count >= FORGOT_MAX) return false;
+  entry.count++;
+  return true;
+}
+
 sql`CREATE TABLE IF NOT EXISTS login_events (
   id BIGSERIAL PRIMARY KEY, user_id INTEGER, user_name TEXT, user_role TEXT, ip TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
@@ -144,6 +161,10 @@ router.post('/login', async (req, res) => {
 
 // POST /api/auth/forgot-password
 router.post('/forgot-password', async (req, res) => {
+  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip;
+  if (!checkForgotRate(ip)) {
+    return res.status(429).json({ error: 'Muitas tentativas. Aguarde 15 minutos.' });
+  }
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'E-mail obrigatório.' });
   try {
@@ -187,7 +208,7 @@ router.post('/reset-password', async (req, res) => {
     if (!user) return res.status(400).json({ error: 'Link inválido ou expirado.' });
 
     const hash = await bcrypt.hash(password, 10);
-    await sql`UPDATE users SET password_hash = ${hash}, reset_token = NULL, reset_expires = NULL WHERE id = ${user.id}`;
+    await sql`UPDATE users SET password_hash = ${hash}, reset_token = NULL, reset_expires = NULL, password_changed_at = NOW() WHERE id = ${user.id}`;
     res.json({ message: 'Senha redefinida com sucesso.' });
   } catch (err) {
     console.error(err);
