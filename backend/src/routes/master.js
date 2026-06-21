@@ -213,4 +213,46 @@ router.put('/companies/:id', masterOnly, async (req, res) => {
   }
 });
 
+// ── POST /api/master/migrate-leads ────────────────────────────────────────────
+// Migra todos os leads de uma empresa falsa para outra — master only
+// Body: { from_company_id, to_company_id, crm }
+router.post('/migrate-leads', auth, async (req, res) => {
+  if (req.role !== 'master') return res.status(403).json({ error: 'Apenas master.' });
+  const { from_company_id, to_company_id, crm } = req.body;
+  if (!from_company_id || !to_company_id) {
+    return res.status(400).json({ error: 'from_company_id e to_company_id obrigatórios.' });
+  }
+  try {
+    // Contar antes
+    const [before] = await sql`SELECT COUNT(*) AS n FROM leads WHERE company_id = ${from_company_id}::uuid`;
+
+    // Migrar leads
+    if (crm) {
+      await sql`
+        UPDATE leads
+        SET company_id = ${to_company_id}::uuid,
+            crm        = ${crm},
+            updated_at = NOW()
+        WHERE company_id = ${from_company_id}::uuid`;
+    } else {
+      await sql`
+        UPDATE leads
+        SET company_id = ${to_company_id}::uuid,
+            updated_at = NOW()
+        WHERE company_id = ${from_company_id}::uuid`;
+    }
+
+    // Migrar atividades do whatsapp_inbox se existirem
+    await sql`
+      UPDATE whatsapp_inbox
+      SET company_id = ${to_company_id}::uuid
+      WHERE company_id = ${from_company_id}::uuid`;
+
+    res.json({ ok: true, migrados: Number(before.n), from: from_company_id, to: to_company_id, crm: crm || 'mantido' });
+  } catch (err) {
+    console.error('[migrate-leads]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
