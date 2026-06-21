@@ -25,7 +25,13 @@ app.set('trust proxy', 1);
 
 app.use(helmet());
 
-const allowedOrigins = [process.env.FRONTEND_URL || 'http://localhost:5173'];
+const allowedOrigins = [
+  process.env.FRONTEND_URL || 'http://localhost:5173',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  // Adicionar variante www caso o domínio seja acessado com prefixo
+  ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL.replace('https://', 'https://www.')] : []),
+].filter(Boolean);
 app.use((req, res, next) => {
   // Rotas sem restricao de origem (chamadas de servicos externos)
   if (

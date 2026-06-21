@@ -102,7 +102,7 @@ router.get('/', auth, async (req, res) => {
 // ── PUT /api/commissions/:sellerId — ADMIN ONLY ───────────────────────────────
 router.put('/:sellerId', auth, async (req, res) => {
   try {
-    if (req.role !== 'admin') {
+    if (!['admin', 'master'].includes(req.role)) {
       return res.status(403).json({ error: 'Apenas administradores podem alterar comissões.' });
     }
 

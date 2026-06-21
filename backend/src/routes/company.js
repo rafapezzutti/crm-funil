@@ -20,7 +20,7 @@ router.get('/', async (req, res) => {
 
 // PUT /api/company
 router.put('/', async (req, res) => {
-  if (req.role !== 'admin') return res.status(403).json({ error: 'Apenas administradores podem editar.' });
+  if (!['admin', 'master'].includes(req.role)) return res.status(403).json({ error: 'Apenas administradores podem editar.' });
   const { name } = req.body;
   if (!name) return res.status(400).json({ error: 'Nome obrigatório.' });
   const [company] = await sql`UPDATE companies SET name = ${name} WHERE id = ${req.companyId} RETURNING *`;
@@ -66,7 +66,7 @@ router.get('/settings', async (req, res) => {
 
 // PUT /api/company/settings
 router.put('/settings', async (req, res) => {
-  if (req.role !== 'admin') return res.status(403).json({ error: 'Apenas administradores podem alterar.' });
+  if (!['admin', 'master'].includes(req.role)) return res.status(403).json({ error: 'Apenas administradores podem alterar.' });
   const { crm_types, whatsapp_api_url, whatsapp_api_token, whatsapp_instance } = req.body;
   try {
     await sql`
@@ -89,7 +89,7 @@ router.put('/settings', async (req, res) => {
 
 // POST /api/company/settings/test-whatsapp
 router.post('/settings/test-whatsapp', async (req, res) => {
-  if (req.role !== 'admin') return res.status(403).json({ error: 'Apenas administradores.' });
+  if (!['admin', 'master'].includes(req.role)) return res.status(403).json({ error: 'Apenas administradores.' });
   const { whatsapp_api_url, whatsapp_api_token, whatsapp_instance } = req.body;
   if (!whatsapp_api_url || !whatsapp_api_token || !whatsapp_instance) {
     return res.status(400).json({ error: 'Preencha URL, token e instância.' });
