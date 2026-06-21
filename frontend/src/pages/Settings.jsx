@@ -180,7 +180,7 @@ function WhatsAppConnect({ isAdmin }) {
   // Inicia polling de status (5s) + auto-refresh do QR (55s — expira em ~60s)
   function startPolling() {
     stopAll();
-    pollRef.current      = setInterval(fetchStatus,    5000);
+    pollRef.current      = setInterval(fetchStatus,    10000);
     qrRefreshRef.current = setInterval(handleRefreshQr, 55000);
   }
 

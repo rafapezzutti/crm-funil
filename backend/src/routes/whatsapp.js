@@ -193,6 +193,26 @@ router.post('/webhook', async (req, res) => {
 // ── A partir daqui: JWT obrigatório ──────────────────────────────────────────
 router.use(auth);
 
+// ── PUT /api/whatsapp/evolution/instance ─────────────────────────────────────
+// Permite admin/master sobrescrever qual instância Evolution esta empresa usa
+router.put('/evolution/instance', async (req, res) => {
+  if (!['admin','master'].includes(req.role)) {
+    return res.status(403).json({ error: 'Apenas admin pode alterar a instância.' });
+  }
+  const { instanceName } = req.body;
+  if (!instanceName) return res.status(400).json({ error: 'instanceName é obrigatório.' });
+  try {
+    await sql`
+      INSERT INTO company_settings (company_id, whatsapp_instance)
+      VALUES (${req.companyId}, ${instanceName})
+      ON CONFLICT (company_id) DO UPDATE
+      SET whatsapp_instance = ${instanceName}, updated_at = NOW()`;
+    res.json({ ok: true, instanceName });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── POST /api/whatsapp/evolution/connect ──────────────────────────────────────
 router.post('/evolution/connect', async (req, res) => {
   if (!evoUrl()) return res.status(503).json({ error: 'EVOLUTION_API_URL não configurada no servidor.' });
