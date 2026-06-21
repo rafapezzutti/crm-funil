@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api';
 import LeadModal from '../components/LeadModal';
 import { useCrmTypes } from '../CrmTypesContext';
+import { useAuth } from '../AuthContext';
 const STAGE_LABEL= { prospeccao:'Prospecção', negociacao:'Negociação', piloto:'Piloto / Teste', producao:'Produção', perdido:'Perdido', cancelado:'Cancelado' };
 const SCORE_ICON = { muito_quente:'🔥 Muito quente', quente:'🌶️ Quente', morno:'⚡ Morno', frio:'💧 Frio', muito_frio:'❄️ Muito frio' };
 const TIPO_ICON  = {
@@ -326,6 +327,7 @@ function WhatsAppTab({ leadId, leadName, chats, setChats, viewing, setViewing })
 
 export default function LeadDetail() {
   const { crmLabel, crmBadgeClass } = useCrmTypes();
+  const { role } = useAuth();
   const { id } = useParams();
   const nav    = useNavigate();
   const [lead,    setLead]    = useState(null);
@@ -465,7 +467,11 @@ export default function LeadDetail() {
           <div style={{display:'flex', gap:8, flexShrink:0}}>
             <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}>✏️ Editar</button>
             <button className="btn btn-primary btn-sm" onClick={() => { setStageDlg(true); }}>📍 Mover Etapa</button>
-            <button className="btn btn-danger btn-sm" disabled={deleting} onClick={deleteLead}>🗑</button>
+            {['admin','master'].includes(role) && (
+              <button className="btn btn-danger btn-sm" disabled={deleting} onClick={deleteLead} title="Excluir lead">
+                {deleting ? '…' : '🗑'}
+              </button>
+            )}
           </div>
         </div>
 

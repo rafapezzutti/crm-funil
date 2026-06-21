@@ -450,6 +450,9 @@ router.put('/:id', auth, async (req, res) => {
 
 // ── DELETE /api/leads/:id ─────────────────────────────────────────────────────
 router.delete('/:id', auth, async (req, res) => {
+  if (!['admin', 'master'].includes(req.role)) {
+    return res.status(403).json({ error: 'Apenas administradores podem excluir leads.' });
+  }
   try {
     await sql`DELETE FROM leads WHERE id = ${req.params.id} AND company_id = ${req.companyId}`;
     res.json({ ok: true });
