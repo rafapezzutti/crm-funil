@@ -6,7 +6,8 @@ import api from '../api';
 const GROUPS = [
   { label:'Principal', items:[
     { icon:'📊', label:'Dashboard', path:'/',      roles:['admin','master','vendedor'] },
-    { icon:'🎯', label:'Funil',     path:'/funil', roles:['admin','master','vendedor'] },
+    { icon:'🎯', label:'Funil',     path:'/funil',      roles:['admin','master','vendedor'] },
+    { icon:'📋', label:'Prospecção', path:'/prospeccao', roles:['admin','master','vendedor'] },
   ]},
   { label:'Gestão', items:[
     { icon:'🏭', label:'Produção',  path:'/producao',  roles:['admin','master'] },

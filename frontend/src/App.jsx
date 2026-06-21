@@ -18,6 +18,7 @@ import ResetPassword   from './pages/ResetPassword';
 import Settings        from './pages/Settings';
 import Robos           from './pages/Robos';
 import MasterEmpresas  from './pages/MasterEmpresas';
+import Prospecting     from './pages/Prospecting';
 
 function PrivateRoute({ children }) {
   const { user, loading, suspended, logout } = useAuth();
@@ -45,6 +46,7 @@ export default function App() {
           <Route path="/register" element={<Register />} />
           <Route path="/" element={<PrivateRoute><Shell><Dashboard /></Shell></PrivateRoute>} />
           <Route path="/funil" element={<PrivateRoute><Shell><Funil /></Shell></PrivateRoute>} />
+          <Route path="/prospeccao" element={<PrivateRoute><Shell><Prospecting /></Shell></PrivateRoute>} />
           <Route path="/leads/:id" element={<PrivateRoute><Shell><LeadDetail /></Shell></PrivateRoute>} />
           <Route path="/producao" element={<PrivateRoute><Shell><Producao /></Shell></PrivateRoute>} />
           <Route path="/planos" element={<PrivateRoute><Shell><Planos /></Shell></PrivateRoute>} />

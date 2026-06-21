@@ -30,7 +30,8 @@ app.use((req, res, next) => {
   // Rotas sem restricao de origem (chamadas de servicos externos)
   if (
     req.path.startsWith('/api/leads/prospecting-sync') ||
-    req.path === '/api/whatsapp/webhook'
+    req.path === '/api/whatsapp/webhook' ||
+    req.path === '/api/prospecting/daily-sync'
   ) {
     return cors({ origin: true, credentials: false })(req, res, next);
   }

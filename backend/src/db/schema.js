@@ -252,6 +252,67 @@ async function ensureSchema(force = false) {
     CREATE INDEX IF NOT EXISTS idx_whatsapp_inbox_phone
       ON whatsapp_inbox(phone, company_id)`);
 
+  // Histórico de prospecção — independente do funil de leads
+  results.push(await runSafe('prospecting_records', () => sql`
+    CREATE TABLE IF NOT EXISTS prospecting_records (
+      id             BIGSERIAL PRIMARY KEY,
+      company_id     UUID         NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+      vendedor_id    UUID,
+      nome           VARCHAR(200) NOT NULL,
+      empresa        VARCHAR(200),
+      telefone       VARCHAR(50),
+      crm            VARCHAR(30),
+      data_abordagem DATE,
+      status         VARCHAR(30)  DEFAULT 'sem_resposta',
+      resposta       TEXT,
+      analise        TEXT,
+      proximo_passo  TEXT,
+      promoted_at    TIMESTAMPTZ,
+      promoted_by    UUID,
+      lead_id        INT,
+      data_arquivo   DATE,
+      origem         VARCHAR(50)  DEFAULT 'prospeccao_diaria',
+      raw            JSONB,
+      created_at     TIMESTAMPTZ  DEFAULT NOW(),
+      updated_at     TIMESTAMPTZ  DEFAULT NOW()
+    )`));
+
+  await runSafe('prospecting_records_idx_date', () => sql`
+    CREATE INDEX IF NOT EXISTS idx_prosp_records_company_date
+      ON prospecting_records(company_id, data_abordagem DESC)`);
+
+  await runSafe('prospecting_records_idx_phone', () => sql`
+    CREATE INDEX IF NOT EXISTS idx_prosp_records_phone
+      ON prospecting_records(telefone, company_id)`);
+
+  // Consentimento de monitoramento WhatsApp (auditoria)
+  results.push(await runSafe('number_consents', () => sql`
+    CREATE TABLE IF NOT EXISTS number_consents (
+      id            BIGSERIAL PRIMARY KEY,
+      company_id    UUID         NOT NULL,
+      user_id       UUID         NOT NULL,
+      phone         VARCHAR(50),
+      instance_name TEXT,
+      terms_version VARCHAR(20)  DEFAULT 'v1.0',
+      accepted_at   TIMESTAMPTZ  DEFAULT NOW(),
+      ip_address    TEXT,
+      user_agent    TEXT
+    )`));
+
+  // Múltiplos números WhatsApp por empresa
+  results.push(await runSafe('whatsapp_connections', () => sql`
+    CREATE TABLE IF NOT EXISTS whatsapp_connections (
+      id            BIGSERIAL PRIMARY KEY,
+      company_id    UUID         NOT NULL,
+      vendedor_id   UUID,
+      instance_name TEXT         NOT NULL,
+      phone         VARCHAR(50),
+      status        VARCHAR(20)  DEFAULT 'disconnected',
+      created_at    TIMESTAMPTZ  DEFAULT NOW(),
+      updated_at    TIMESTAMPTZ  DEFAULT NOW(),
+      UNIQUE(company_id, instance_name)
+    )`));
+
   const ok  = results.filter(r => r.ok).length;
   const err = results.filter(r => !r.ok).length;
   console.log(`[schema] ${ok} OK, ${err} erros`);
