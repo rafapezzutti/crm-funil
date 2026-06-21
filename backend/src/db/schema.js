@@ -252,6 +252,9 @@ async function ensureSchema(force = false) {
     CREATE INDEX IF NOT EXISTS idx_whatsapp_inbox_phone
       ON whatsapp_inbox(phone, company_id)`);
 
+  await runSafe('company_settings_commission_rules', () => sql`
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS commission_rules JSONB DEFAULT NULL`);
+
   // Histórico de prospecção — independente do funil de leads
   results.push(await runSafe('prospecting_records', () => sql`
     CREATE TABLE IF NOT EXISTS prospecting_records (

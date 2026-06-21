@@ -12,7 +12,7 @@ const GROUPS = [
   { label:'Gestão', items:[
     { icon:'🏭', label:'Produção',  path:'/producao',  roles:['admin','master'] },
     { icon:'💰', label:'Planos',    path:'/planos',    roles:['master'] },
-    { icon:'💵', label:'Comissões', path:'/comissoes', roles:['admin','master'] },
+    { icon:'💵', label:'Comissões', path:'/comissoes', roles:['admin','master','vendedor'] },
   ]},
   { label:'Administração', items:[
     { icon:'👥', label:'Vendedores',    path:'/admin',           roles:['admin','master'] },
