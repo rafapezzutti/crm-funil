@@ -159,7 +159,18 @@ router.post('/webhook', async (req, res) => {
           msg?.message?.videoMessage?.caption ||
           '[mídia]';
 
-        // Buscar lead pelo telefone (match por 8 dígitos finais — robusto com DDI/DDD)
+        // 1. Salvar no inbox (todas as mensagens, independente de ter lead no Funil)
+        await sql`
+          INSERT INTO whatsapp_inbox (company_id, instance_name, phone, message_text, raw)
+          VALUES (
+            ${companyId},
+            ${instanceName},
+            ${from},
+            ${text},
+            ${JSON.stringify({ ts: msg?.messageTimestamp, status: msg?.status })}
+          )`;
+
+        // 2. Se existir lead no Funil, registrar atividade também
         const tail = from.slice(-8);
         const [lead] = await sql`
           SELECT id FROM leads
@@ -187,6 +198,40 @@ router.post('/webhook', async (req, res) => {
     }
   } catch (err) {
     console.error('[whatsapp webhook]', err.message);
+  }
+});
+
+// ── GET /api/whatsapp/inbox ───────────────────────────────────────────────────
+// Retorna mensagens inbound do dia para a instância — protegido por robot token
+// Sem JWT (chamado pelo Cowork/skill, não pelo browser)
+router.get('/inbox', async (req, res) => {
+  const token = req.headers['x-robot-token'];
+  if (!token || token !== process.env.ROBOT_SECRET) {
+    return res.status(401).json({ error: 'Token inválido.' });
+  }
+
+  const { date, instance } = req.query;
+  if (!date || !instance) {
+    return res.status(400).json({ error: 'Parâmetros obrigatórios: date (YYYY-MM-DD) e instance.' });
+  }
+
+  try {
+    // Identificar empresa pela instância
+    const [cs] = await sql`
+      SELECT company_id FROM company_settings WHERE whatsapp_instance = ${instance}`;
+    if (!cs) return res.status(404).json({ error: 'Instância não encontrada.' });
+
+    const messages = await sql`
+      SELECT phone, message_text, received_at
+      FROM whatsapp_inbox
+      WHERE company_id = ${cs.company_id}
+        AND received_at::date = ${date}::date
+      ORDER BY received_at ASC`;
+
+    res.json({ ok: true, date, instance, total: messages.length, messages });
+  } catch (err) {
+    console.error('[whatsapp inbox]', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 

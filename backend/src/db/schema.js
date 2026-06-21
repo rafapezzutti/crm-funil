@@ -232,6 +232,26 @@ async function ensureSchema(force = false) {
       created_at  TIMESTAMPTZ  DEFAULT NOW()
     )`));
 
+  // Inbox de mensagens inbound — alimentado pelo webhook Evolution API
+  results.push(await runSafe('whatsapp_inbox', () => sql`
+    CREATE TABLE IF NOT EXISTS whatsapp_inbox (
+      id            BIGSERIAL PRIMARY KEY,
+      company_id    UUID         REFERENCES companies(id) ON DELETE CASCADE,
+      instance_name TEXT,
+      phone         TEXT NOT NULL,
+      message_text  TEXT,
+      received_at   TIMESTAMPTZ DEFAULT NOW(),
+      raw           JSONB
+    )`));
+
+  await runSafe('whatsapp_inbox_idx_company_date', () => sql`
+    CREATE INDEX IF NOT EXISTS idx_whatsapp_inbox_company_date
+      ON whatsapp_inbox(company_id, received_at)`);
+
+  await runSafe('whatsapp_inbox_idx_phone', () => sql`
+    CREATE INDEX IF NOT EXISTS idx_whatsapp_inbox_phone
+      ON whatsapp_inbox(phone, company_id)`);
+
   const ok  = results.filter(r => r.ok).length;
   const err = results.filter(r => !r.ok).length;
   console.log(`[schema] ${ok} OK, ${err} erros`);
