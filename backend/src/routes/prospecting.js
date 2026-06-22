@@ -175,27 +175,26 @@ router.post('/import', auth, async (req, res) => {
   for (const lead of leads) {
     try {
       // Evita duplicata por telefone
-      if (lead.telefone) {
+      const fone = lead.telefone || lead.whatsapp || null;
+      if (fone) {
         const [existing] = await sql`
           SELECT id FROM leads
           WHERE company_id = ${companyId}
-            AND (phone = ${lead.telefone} OR phone = ${lead.whatsapp || ''})
+            AND telefone = ${fone}
           LIMIT 1`;
         if (existing) { skipped++; continue; }
       }
 
       await sql`
-        INSERT INTO leads (company_id, name, phone, address, website, origin, stage, score, origem, created_at)
+        INSERT INTO leads (company_id, nome, telefone, crm, stage, origem, score, created_at)
         VALUES (
           ${companyId},
           ${lead.nome},
-          ${lead.telefone || lead.whatsapp || null},
-          ${lead.endereco || null},
-          ${lead.site || null},
-          ${lead.segmento === 'saude' ? 'CRM Saúde' : 'CRM Pet'},
+          ${fone},
+          ${lead.segmento === 'saude' ? 'saude' : 'pet'},
           'prospeccao',
-          ${Math.round((lead.rating || 0) * 10)},
-          'google_places',
+          'prospeccao_diaria',
+          ${lead.score || null},
           NOW()
         )`;
       imported++;
@@ -222,7 +221,7 @@ router.post('/daily-sync', async (req, res) => {
   try {
     const { token, data, leads: prospectos } = req.body;
 
-    const secret = process.env.ROBOT_SECRET;
+    const secret = process.env.PROSPECTING_SYNC_TOKEN;
     if (!secret || token !== secret) {
       return res.status(401).json({ error: 'Token inválido.' });
     }
@@ -357,7 +356,7 @@ router.get('/records', auth, async (req, res) => {
 router.get('/dates', auth, async (req, res) => {
   try {
     const rows = await sql`
-      SELECT DISTINCT data_abordagem::text AS date,
+      SELECT data_abordagem::text AS date,
         COUNT(*)                                        AS total,
         COUNT(*) FILTER (WHERE status = 'quente')      AS quentes,
         COUNT(*) FILTER (WHERE status = 'morno')       AS mornos
