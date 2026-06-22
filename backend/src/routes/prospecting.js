@@ -226,14 +226,34 @@ router.post('/daily-sync', async (req, res) => {
       return res.status(401).json({ error: 'Token inválido.' });
     }
 
-    const defaultCompanyId = process.env.PROSPECTING_COMPANY_ID;
-    if (!defaultCompanyId) return res.status(500).json({ error: 'PROSPECTING_COMPANY_ID não configurado.' });
+    // Resolve company_id: env vars têm prioridade; se inválidos, busca no banco pela empresa "Pezzutti"
+    let defaultCompanyId = process.env.PROSPECTING_COMPANY_ID;
+    if (!defaultCompanyId) {
+      const [co] = await sql`SELECT id FROM companies WHERE name ILIKE '%pezzutti%' ORDER BY name LIMIT 1`;
+      if (!co) return res.status(500).json({ error: 'Empresa Pezzutti não encontrada no banco.' });
+      defaultCompanyId = co.id;
+    } else {
+      // Valida se o company_id existe no banco; se não existir, usa lookup
+      const [valid] = await sql`SELECT id FROM companies WHERE id = ${defaultCompanyId}::uuid LIMIT 1`;
+      if (!valid) {
+        const [co] = await sql`SELECT id FROM companies WHERE name ILIKE '%pezzutti%' ORDER BY name LIMIT 1`;
+        if (!co) return res.status(500).json({ error: 'Empresa Pezzutti não encontrada no banco.' });
+        defaultCompanyId = co.id;
+      }
+    }
 
     const CRM_COMPANY_MAP = {
       'pet':   process.env.PROSPECTING_COMPANY_ID_PETS  || defaultCompanyId,
       'pets':  process.env.PROSPECTING_COMPANY_ID_PETS  || defaultCompanyId,
       'saude': process.env.PROSPECTING_COMPANY_ID_SAUDE || defaultCompanyId,
     };
+    // Garante que os IDs do mapa também existem no banco; se não, usa defaultCompanyId
+    for (const key of Object.keys(CRM_COMPANY_MAP)) {
+      if (CRM_COMPANY_MAP[key] !== defaultCompanyId) {
+        const [v] = await sql`SELECT id FROM companies WHERE id = ${CRM_COMPANY_MAP[key]}::uuid LIMIT 1`;
+        if (!v) CRM_COMPANY_MAP[key] = defaultCompanyId;
+      }
+    }
 
     let criados = 0, atualizados = 0, ignorados = 0;
 
