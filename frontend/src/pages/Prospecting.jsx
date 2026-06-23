@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../AuthContext';
+import { useCrmTypes } from '../CrmTypesContext';
 
 const STATUS_CONFIG = {
   quente:       { label: 'Quente',       bg: 'rgba(216,90,48,.15)',  color: '#D85A30' },
@@ -12,12 +13,15 @@ const STATUS_CONFIG = {
   nao_entregue: { label: 'Não entregue', bg: 'rgba(163,45,45,.12)',  color: '#A32D2D' },
 };
 
-const CRM_CONFIG = {
-  pet:     { label: 'Pet',      bg: 'rgba(15,110,86,.12)',   color: '#0F6E56' },
-  saude:   { label: 'Saúde',   bg: 'rgba(24,95,165,.12)',   color: '#185FA5' },
-  esporte: { label: 'Esportes', bg: 'rgba(217,119,6,.12)',   color: '#D97706' },
-  estetica:{ label: 'Estética', bg: 'rgba(124,58,237,.12)',  color: '#7C3AED' },
-};
+// Paleta de cores para badges de CRM (por índice, para tipos dinâmicos)
+const CRM_COLORS = [
+  { bg: 'rgba(15,110,86,.12)',  color: '#0F6E56' },
+  { bg: 'rgba(24,95,165,.12)',  color: '#185FA5' },
+  { bg: 'rgba(217,119,6,.12)',  color: '#D97706' },
+  { bg: 'rgba(124,58,237,.12)', color: '#7C3AED' },
+  { bg: 'rgba(216,90,48,.12)',  color: '#D85A30' },
+  { bg: 'rgba(83,74,183,.12)',  color: '#534AB7' },
+];
 
 const PAGE_SIZE = 20;
 
@@ -34,8 +38,17 @@ function fmtDate(iso) {
 
 export default function Prospecting() {
   const { role } = useAuth();
+  const { types, crmLabel, crmBadgeClass } = useCrmTypes();
   const navigate   = useNavigate();
   const canPromote = role === 'admin' || role === 'master';
+
+  // Gera badge de CRM com cor dinâmica por índice
+  function crmBadge(crm) {
+    const idx = types.findIndex(t => t.value === crm);
+    const color = CRM_COLORS[idx >= 0 ? idx % CRM_COLORS.length : 0];
+    const label = idx >= 0 ? types[idx].label : (crm || '—');
+    return { label, ...color };
+  }
 
   const [dates, setDates]         = useState([]);
   const [selDate, setSelDate]     = useState('');
@@ -234,10 +247,9 @@ export default function Prospecting() {
         </select>
         <select value={fCrm} onChange={e => setFCrm(e.target.value)} style={selectStyle}>
           <option value="">Todos os segmentos</option>
-          <option value="pet">Pet</option>
-          <option value="saude">Saúde</option>
-          <option value="esporte">Esportes</option>
-          <option value="estetica">Estética</option>
+          {types.map(t => (
+            <option key={t.value} value={t.value}>{t.label}</option>
+          ))}
         </select>
         <input
           value={fQ}
@@ -353,7 +365,7 @@ export default function Prospecting() {
         <div style={{ background: 'var(--card)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
           {pagedRecords.map((rec, idx) => {
             const sc = STATUS_CONFIG[rec.status] || STATUS_CONFIG.sem_resposta;
-            const cc = CRM_CONFIG[rec.crm]       || { label: rec.crm || '—', bg: 'var(--card2)', color: 'var(--muted)' };
+            const cc = crmBadge(rec.crm);
             const isExp = expanded === rec.id;
             const curSeller = sellerMap[rec.id] || '';
 
