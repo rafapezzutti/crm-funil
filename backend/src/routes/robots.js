@@ -28,6 +28,19 @@ router.get('/queued', robotAuth, async (req, res) => {
   }
 });
 
+// PUT /api/robots/:id/queued — Cowork enfileira robô (sem JWT, apenas ROBOT_SECRET)
+router.put('/:id/queued', robotAuth, async (req, res) => {
+  try {
+    const [robot] = await sql`
+      UPDATE robots SET queued_at = NOW() WHERE id = ${req.params.id}
+      RETURNING id, name, queued_at`;
+    if (!robot) return res.status(404).json({ error: 'Robô não encontrado.' });
+    res.json(robot);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // DELETE /api/robots/:id/queued — Cowork limpa a fila após executar
 router.delete('/:id/queued', robotAuth, async (req, res) => {
   try {
@@ -110,6 +123,229 @@ router.get('/:id/context', robotAuth, async (req, res) => {
           ROUND(AVG(score::numeric)) AS score_medio
         FROM leads WHERE company_id = ${companyId} AND ativo = true`;
       context = { tipo: 'relatorio', stats };
+
+    } else if (robot.tipo === 'unimidia_prospeccao') {
+      // Contexto para o Robô 1 da Unimidia: o que foi prospectado ontem e histórico recente
+      const hoje = new Date().toISOString().split('T')[0];
+      const ontem = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
+      const prospectadosOntem = await sql`
+        SELECT nome, empresa, telefone, status, crm AS segmento
+        FROM prospecting_records
+        WHERE company_id = ${companyId}
+          AND data_abordagem = ${ontem}::date
+        ORDER BY status, nome
+        LIMIT 200`;
+
+      const naoRespondidosOntem = await sql`
+        SELECT nome, empresa, telefone, crm AS segmento
+        FROM prospecting_records
+        WHERE company_id = ${companyId}
+          AND data_abordagem = ${ontem}::date
+          AND status IN ('sem_resposta', 'nao_entregue')
+        ORDER BY nome
+        LIMIT 150`;
+
+      const [totaisOntem] = await sql`
+        SELECT
+          COUNT(*) AS total,
+          COUNT(*) FILTER (WHERE status = 'quente')        AS quentes,
+          COUNT(*) FILTER (WHERE status = 'morno')         AS mornos,
+          COUNT(*) FILTER (WHERE status = 'sem_resposta')  AS sem_resposta,
+          COUNT(*) FILTER (WHERE status = 'visualizado')   AS visualizados,
+          COUNT(*) FILTER (WHERE status = 'frio')          AS frios
+        FROM prospecting_records
+        WHERE company_id = ${companyId}
+          AND data_abordagem = ${ontem}::date`;
+
+      const prospectadosHoje = await sql`
+        SELECT nome, empresa, telefone, status, crm AS segmento
+        FROM prospecting_records
+        WHERE company_id = ${companyId}
+          AND data_abordagem = ${hoje}::date
+        ORDER BY nome`;
+
+      context = {
+        tipo: 'unimidia_prospeccao',
+        data_hoje: hoje,
+        data_ontem: ontem,
+        totais_ontem: totaisOntem,
+        prospectados_ontem: prospectadosOntem,
+        nao_respondidos_ontem: naoRespondidosOntem,
+        ja_prospectados_hoje: prospectadosHoje,
+      };
+
+    } else if (robot.tipo === 'unimidia_revisao') {
+      // Contexto para Robô 2 e 3 da Unimidia: conversas e stats do dia
+      const hoje = new Date().toISOString().split('T')[0];
+      const ontem = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+      const semanaAtras = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+
+      const prospectadosHoje = await sql`
+        SELECT nome, empresa, telefone, crm AS segmento,
+               status, analise, proximo_passo, updated_at,
+               u.name AS vendedor_nome
+        FROM prospecting_records r
+        LEFT JOIN users u ON u.id = r.vendedor_id
+        WHERE r.company_id = ${companyId}
+          AND r.data_abordagem = ${hoje}::date
+        ORDER BY r.updated_at DESC NULLS LAST, r.nome`;
+
+      const [totaisHoje] = await sql`
+        SELECT
+          COUNT(*) AS total,
+          COUNT(*) FILTER (WHERE status = 'quente')        AS quentes,
+          COUNT(*) FILTER (WHERE status = 'morno')         AS mornos,
+          COUNT(*) FILTER (WHERE status = 'sem_resposta')  AS sem_resposta,
+          COUNT(*) FILTER (WHERE status = 'visualizado')   AS visualizados,
+          COUNT(*) FILTER (WHERE status = 'frio')          AS frios,
+          COUNT(*) FILTER (WHERE status = 'nao_entregue')  AS nao_entregues
+        FROM prospecting_records
+        WHERE company_id = ${companyId}
+          AND data_abordagem = ${hoje}::date`;
+
+      const statsPorSegmento = await sql`
+        SELECT
+          crm AS segmento,
+          COUNT(*) AS total,
+          COUNT(*) FILTER (WHERE status = 'quente')       AS quentes,
+          COUNT(*) FILTER (WHERE status = 'morno')        AS mornos,
+          COUNT(*) FILTER (WHERE status = 'sem_resposta') AS sem_resposta
+        FROM prospecting_records
+        WHERE company_id = ${companyId}
+          AND data_abordagem = ${hoje}::date
+        GROUP BY crm
+        ORDER BY quentes DESC`;
+
+      const statsPorVendedor = await sql`
+        SELECT
+          u.name AS vendedor,
+          COUNT(*) AS total,
+          COUNT(*) FILTER (WHERE r.status = 'quente')       AS quentes,
+          COUNT(*) FILTER (WHERE r.status = 'morno')        AS mornos,
+          COUNT(*) FILTER (WHERE r.status = 'frio')         AS frios,
+          COUNT(*) FILTER (WHERE r.status = 'visualizado')  AS visualizados,
+          COUNT(*) FILTER (WHERE r.status = 'sem_resposta') AS sem_resposta
+        FROM prospecting_records r
+        LEFT JOIN users u ON u.id = r.vendedor_id
+        WHERE r.company_id = ${companyId}
+          AND r.data_abordagem = ${hoje}::date
+        GROUP BY u.name
+        ORDER BY quentes DESC`;
+
+      const melhoresdaSemana = await sql`
+        SELECT analise, status, crm AS segmento, nome
+        FROM prospecting_records
+        WHERE company_id = ${companyId}
+          AND status = 'quente'
+          AND data_abordagem >= ${semanaAtras}::date
+          AND analise IS NOT NULL
+        ORDER BY updated_at DESC
+        LIMIT 10`;
+
+      context = {
+        tipo: 'unimidia_revisao',
+        data_hoje: hoje,
+        totais_hoje: totaisHoje,
+        prospectados_hoje: prospectadosHoje,
+        stats_por_segmento: statsPorSegmento,
+        stats_por_vendedor: statsPorVendedor,
+        melhores_da_semana: melhoresdaSemana,
+      };
+
+    } else if (robot.tipo === 'unimidia_relatorio') {
+      // Contexto para Robô 4 da Unimidia: relatório executivo semanal
+      const hoje = new Date().toISOString().split('T')[0];
+      const semanaAtras = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+
+      const [totaisSemana] = await sql`
+        SELECT
+          COUNT(*) AS total_abordados,
+          COUNT(*) FILTER (WHERE status = 'quente')        AS quentes,
+          COUNT(*) FILTER (WHERE status = 'morno')         AS mornos,
+          COUNT(*) FILTER (WHERE status = 'frio')          AS frios,
+          COUNT(*) FILTER (WHERE status = 'visualizado')   AS visualizados,
+          COUNT(*) FILTER (WHERE status = 'sem_resposta')  AS sem_resposta,
+          COUNT(*) FILTER (WHERE promoted_at IS NOT NULL)  AS convertidos
+        FROM prospecting_records
+        WHERE company_id = ${companyId}
+          AND data_abordagem >= ${semanaAtras}::date
+          AND data_abordagem <= ${hoje}::date`;
+
+      const porSegmento = await sql`
+        SELECT
+          crm AS segmento,
+          COUNT(*) AS total,
+          COUNT(*) FILTER (WHERE status = 'quente')       AS quentes,
+          COUNT(*) FILTER (WHERE status = 'morno')        AS mornos,
+          COUNT(*) FILTER (WHERE promoted_at IS NOT NULL) AS convertidos
+        FROM prospecting_records
+        WHERE company_id = ${companyId}
+          AND data_abordagem >= ${semanaAtras}::date
+        GROUP BY crm
+        ORDER BY quentes DESC`;
+
+      const rankingVendedores = await sql`
+        SELECT
+          COALESCE(u.name, 'Sem vendedor') AS vendedor,
+          COUNT(*) AS total,
+          COUNT(*) FILTER (WHERE r.status = 'quente')        AS quentes,
+          COUNT(*) FILTER (WHERE r.status = 'morno')         AS mornos,
+          COUNT(*) FILTER (WHERE r.status = 'frio')          AS frios,
+          COUNT(*) FILTER (WHERE r.status = 'visualizado')   AS visualizados,
+          COUNT(*) FILTER (WHERE r.promoted_at IS NOT NULL)  AS convertidos,
+          ROUND(
+            100.0 * COUNT(*) FILTER (WHERE r.status IN ('quente','morno')) / NULLIF(COUNT(*), 0)
+          ) AS taxa_engajamento
+        FROM prospecting_records r
+        LEFT JOIN users u ON u.id = r.vendedor_id
+        WHERE r.company_id = ${companyId}
+          AND r.data_abordagem >= ${semanaAtras}::date
+        GROUP BY u.name
+        ORDER BY convertidos DESC, quentes DESC, taxa_engajamento DESC`;
+
+      const porDia = await sql`
+        SELECT
+          data_abordagem::text AS data,
+          COUNT(*) AS total,
+          COUNT(*) FILTER (WHERE status = 'quente') AS quentes,
+          COUNT(*) FILTER (WHERE status = 'morno')  AS mornos
+        FROM prospecting_records
+        WHERE company_id = ${companyId}
+          AND data_abordagem >= ${semanaAtras}::date
+        GROUP BY data_abordagem
+        ORDER BY data_abordagem`;
+
+      const melhorsMensagens = await sql`
+        SELECT analise, crm AS segmento, nome, status, data_abordagem::text AS data
+        FROM prospecting_records
+        WHERE company_id = ${companyId}
+          AND status = 'quente'
+          AND data_abordagem >= ${semanaAtras}::date
+          AND analise IS NOT NULL
+        ORDER BY data_abordagem DESC
+        LIMIT 15`;
+
+      const followUpsPendentes = await sql`
+        SELECT nome, empresa, telefone, crm AS segmento, status, proximo_passo, data_abordagem::text AS data
+        FROM prospecting_records
+        WHERE company_id = ${companyId}
+          AND status IN ('quente', 'morno')
+          AND promoted_at IS NULL
+          AND data_abordagem >= ${semanaAtras}::date
+        ORDER BY CASE status WHEN 'quente' THEN 1 WHEN 'morno' THEN 2 ELSE 3 END, data_abordagem DESC
+        LIMIT 30`;
+
+      context = {
+        tipo: 'unimidia_relatorio',
+        periodo: { inicio: semanaAtras, fim: hoje },
+        totais_semana: totaisSemana,
+        por_segmento: porSegmento,
+        ranking_vendedores: rankingVendedores,
+        por_dia: porDia,
+        melhores_mensagens: melhorsMensagens,
+        follow_ups_pendentes: followUpsPendentes,
+      };
 
     } else {
       const [count] = await sql`SELECT COUNT(*) AS total FROM leads WHERE company_id = ${companyId} AND ativo = true`;

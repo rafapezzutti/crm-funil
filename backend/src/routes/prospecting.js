@@ -52,21 +52,68 @@ const SEGMENT_QUERIES = {
     'banho e tosa',
     'petshop',
   ],
+  // ── Segmentos Unimidia ────────────────────────────────────────────────────
+  unimidia_bares: [
+    'bar São Paulo',
+    'restaurante São Paulo',
+    'café São Paulo',
+    'lanchonete São Paulo',
+    'bistrô São Paulo',
+    'boteco São Paulo',
+  ],
+  unimidia_hoteis: [
+    'hotel São Paulo',
+    'hostel São Paulo',
+    'pousada São Paulo',
+    'hotel interior São Paulo',
+    'resort São Paulo estado',
+  ],
+  unimidia_clinicas: [
+    'clínica médica São Paulo',
+    'clínica odontológica São Paulo',
+    'consultório dentista São Paulo',
+    'centro médico São Paulo',
+    'clínica de saúde São Paulo',
+  ],
 };
+
+// Grandes franquias/redes a descartar (Unimidia)
+const UNIMIDIA_BLACKLIST = [
+  // Alimentação
+  "mcdonald's", 'mcdonalds', 'burger king', 'outback', 'subway', "bob's", 'bobs',
+  'habib', 'giraffas', 'pizza hut', 'dominos', "domino's", 'starbucks', 'madero',
+  'coco bambu', 'grupo zena', 'viena', 'frango assado', 'popeyes', 'kfc',
+  // Hotéis
+  'ibis', 'mercure', 'novotel', 'accor', 'marriott', 'hilton', 'hyatt', 'sheraton',
+  'radisson', 'intercontinental', 'best western', 'holiday inn', 'wyndham',
+  'golden tulip', 'blue tree', 'quality', 'comfort inn', 'sleep inn',
+  // Clínicas
+  'odontocompany', 'sorridents', 'odontoprev', 'unimed', 'hapvida',
+  'notredame intermédica', 'rede d\'or', 'einstein', 'sírio-libanês',
+  'fleury', 'dasa', 'hermes pardini',
+];
+
+function isBlacklisted(name) {
+  const lower = (name || '').toLowerCase();
+  return UNIMIDIA_BLACKLIST.some(bl => lower.includes(bl));
+}
 
 // Tipos válidos por segmento (filtro de verificação)
 const VALID_TYPES = {
   saude: ['health', 'doctor', 'hospital', 'medical_clinic', 'dentist', 'physiotherapist', 'pharmacy'],
   pet:   ['pet_store', 'veterinary_care', 'store'],
+  unimidia_bares:    ['restaurant', 'bar', 'cafe', 'food', 'bakery', 'meal_takeaway', 'meal_delivery'],
+  unimidia_hoteis:   ['lodging', 'establishment'],
+  unimidia_clinicas: ['health', 'doctor', 'hospital', 'medical_clinic', 'dentist', 'physiotherapist'],
 };
 
 // POST /api/prospecting/search
-// Body: { segment: 'saude'|'pet', city: 'São Paulo SP', limit: 50 }
+// Body: { segment: 'saude'|'pet'|'unimidia_bares'|'unimidia_hoteis'|'unimidia_clinicas', city: 'São Paulo SP', limit: 50 }
 router.post('/search', auth, async (req, res) => {
   if (!PLACES_KEY()) return res.status(500).json({ error: 'GOOGLE_PLACES_KEY não configurada.' });
 
   const { segment, city = 'São Paulo SP', limit = 50 } = req.body;
-  if (!SEGMENT_QUERIES[segment]) return res.status(400).json({ error: 'Segmento inválido. Use: saude | pet' });
+  if (!SEGMENT_QUERIES[segment]) return res.status(400).json({ error: 'Segmento inválido. Use: saude | pet | unimidia_bares | unimidia_hoteis | unimidia_clinicas' });
 
   const queries   = SEGMENT_QUERIES[segment];
   const validTypes = VALID_TYPES[segment];
@@ -112,6 +159,19 @@ router.post('/search', auth, async (req, res) => {
 
               // Verificação: pular se sem telefone e sem site
               if (!phone && !website) continue;
+
+              // Para segmentos Unimidia: exigir celular começando com 9
+              if (segment.startsWith('unimidia_')) {
+                const digits = phone.replace(/\D/g, '');
+                // Celular brasileiro: DDD (2 dígitos) + 9 + 8 dígitos = 11 dígitos
+                // O 9o dígito (após o DDD) deve ser 9
+                const semDDI = digits.startsWith('55') ? digits.slice(2) : digits;
+                const semDDD = semDDI.length >= 11 ? semDDI.slice(2) : semDDI;
+                if (!semDDD.startsWith('9')) continue;
+
+                // Descartar grandes franquias/redes
+                if (isBlacklisted(r.name)) continue;
+              }
 
               // Verificação de tipo (flexível: pelo menos 1 tipo compatível OU nome contém keywords)
               const tipos = r.types || [];
