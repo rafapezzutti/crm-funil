@@ -114,6 +114,56 @@ router.delete('/sellers/:id', auth, adminOnly, async (req, res) => {
 });
 
 
+// ── POST /api/admin/invite ────────────────────────────────────────────────────
+// Cria novo usuário e adiciona à empresa com o role especificado (admin/master only)
+router.post('/invite', auth, adminOnly, async (req, res) => {
+  const { name, email, password, role = 'vendedor' } = req.body;
+  if (!name?.trim())  return res.status(400).json({ error: 'Nome é obrigatório.' });
+  if (!email?.trim()) return res.status(400).json({ error: 'E-mail é obrigatório.' });
+  if (!password)      return res.status(400).json({ error: 'Senha é obrigatória.' });
+  if (password.length < 6) return res.status(400).json({ error: 'Senha deve ter ao menos 6 caracteres.' });
+  if (!['admin','vendedor'].includes(role)) return res.status(400).json({ error: 'Função inválida.' });
+
+  try {
+    const emailLower = email.toLowerCase().trim();
+
+    // Verifica se email já existe
+    const [existing] = await sql`SELECT id FROM users WHERE email = ${emailLower}`;
+    if (existing) {
+      // Usuário já existe — apenas associa à empresa se ainda não for membro
+      const [alreadyMember] = await sql`
+        SELECT id FROM company_members WHERE user_id = ${existing.id} AND company_id = ${req.companyId}`;
+      if (alreadyMember) {
+        return res.status(409).json({ error: 'Este e-mail já é membro da empresa.' });
+      }
+      await sql`INSERT INTO company_members (company_id, user_id, role) VALUES (${req.companyId}, ${existing.id}, ${role})`;
+      const [u] = await sql`SELECT id, name, email FROM users WHERE id = ${existing.id}`;
+      return res.json({ ...u, role });
+    }
+
+    // Cria novo usuário
+    const hash = await bcrypt.hash(password, 10);
+    const [user] = await sql`
+      INSERT INTO users (email, password_hash, name)
+      VALUES (${emailLower}, ${hash}, ${name.trim()})
+      RETURNING id, name, email`;
+
+    await sql`INSERT INTO company_members (company_id, user_id, role) VALUES (${req.companyId}, ${user.id}, ${role})`;
+
+    // Se for vendedor, cria seller_profile
+    if (role === 'vendedor') {
+      await sql`
+        INSERT INTO seller_profiles (user_id, company_id, ativo)
+        VALUES (${user.id}, ${req.companyId}, true)
+        ON CONFLICT (user_id) DO NOTHING`;
+    }
+
+    res.json({ ...user, role });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── GET /api/admin/team ───────────────────────────────────────────────────────
 // Retorna todos os membros da empresa (para dropdown de responsável)
 router.get('/team', auth, async (req, res) => {

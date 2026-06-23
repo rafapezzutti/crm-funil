@@ -20,7 +20,7 @@ function TabEmpresa({ company, user, role }) {
   const [companyName, setCompanyName] = useState(company?.name || '');
   const [savingName,  setSavingName]  = useState(false);
   const [members,     setMembers]     = useState([]);
-  const [invite,      setInvite]      = useState({ name:'', email:'', password:'', role:'vendedor' });
+  const [invite,      setInvite]      = useState({ name:'', email:'', password:'', confirmPassword:'', role:'vendedor' });
   const [inviting,    setInviting]    = useState(false);
   const [msg, setMsg] = useState('');
 
@@ -39,15 +39,22 @@ function TabEmpresa({ company, user, role }) {
   async function addUser(e) {
     e.preventDefault();
     if (!invite.name || !invite.email || !invite.password) { setMsg('❌ Preencha todos os campos.'); return; }
+    if (invite.password.length < 6) { setMsg('❌ Senha deve ter ao menos 6 caracteres.'); return; }
+    if (invite.password !== invite.confirmPassword) { setMsg('❌ As senhas não coincidem.'); return; }
     setInviting(true);
     try {
-      await api.post('/admin/invite', invite);
+      const { name, email, password, role } = invite;
+      await api.post('/admin/invite', { name, email, password, role });
       setMsg('✅ Usuário adicionado!');
-      setInvite({ name:'', email:'', password:'', role:'vendedor' });
+      setInvite({ name:'', email:'', password:'', confirmPassword:'', role:'vendedor' });
       api.get('/company/members').then(r => setMembers(r.data)).catch(() => {});
     } catch (err) { setMsg('❌ ' + (err.response?.data?.error || 'Erro.')); }
     finally { setInviting(false); }
   }
+
+  // Feedback em tempo real das senhas
+  const pwMatch   = invite.password && invite.confirmPassword && invite.password === invite.confirmPassword;
+  const pwMismatch = invite.password && invite.confirmPassword && invite.password !== invite.confirmPassword;
 
   const ROLE_LABEL = { admin:'Admin', master:'Master', vendedor:'Vendedor' };
 
@@ -124,14 +131,36 @@ function TabEmpresa({ company, user, role }) {
                   <input type="password" value={invite.password} onChange={e => setInvite(p => ({...p, password:e.target.value}))} placeholder="Mínimo 6 caracteres" />
                 </div>
                 <div className="form-group">
-                  <label>Função</label>
-                  <select value={invite.role} onChange={e => setInvite(p => ({...p, role:e.target.value}))}>
-                    <option value="vendedor">Vendedor</option>
-                    <option value="admin">Admin</option>
-                  </select>
+                  <label>Confirmar senha</label>
+                  <input
+                    type="password"
+                    value={invite.confirmPassword}
+                    onChange={e => setInvite(p => ({...p, confirmPassword:e.target.value}))}
+                    placeholder="Repita a senha"
+                    style={{ borderColor: pwMismatch ? 'var(--danger)' : pwMatch ? 'var(--success)' : undefined }}
+                  />
                 </div>
               </div>
-              <button type="submit" className="btn btn-primary" style={{ fontSize:13 }} disabled={inviting}>
+              {/* Feedback de senha em tempo real */}
+              {(pwMatch || pwMismatch) && (
+                <div style={{ fontSize:11, marginTop:-4, marginBottom:10,
+                  color: pwMatch ? 'var(--success)' : 'var(--danger)' }}>
+                  {pwMatch ? '✅ Senhas idênticas' : '❌ Senhas não coincidem'}
+                </div>
+              )}
+              <div className="form-group" style={{ marginBottom:12 }}>
+                <label>Função</label>
+                <select value={invite.role} onChange={e => setInvite(p => ({...p, role:e.target.value}))}>
+                  <option value="vendedor">Vendedor</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                style={{ fontSize:13 }}
+                disabled={inviting || pwMismatch || !invite.password || !invite.confirmPassword}
+              >
                 {inviting ? '⏳ Adicionando…' : '+ Adicionar usuário'}
               </button>
             </form>
