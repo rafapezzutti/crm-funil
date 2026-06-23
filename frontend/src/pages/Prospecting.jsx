@@ -13,9 +13,13 @@ const STATUS_CONFIG = {
 };
 
 const CRM_CONFIG = {
-  pet:   { label: 'Pet',   bg: 'rgba(15,110,86,.12)',  color: '#0F6E56' },
-  saude: { label: 'Saúde', bg: 'rgba(24,95,165,.12)',  color: '#185FA5' },
+  pet:     { label: 'Pet',      bg: 'rgba(15,110,86,.12)',   color: '#0F6E56' },
+  saude:   { label: 'Saúde',   bg: 'rgba(24,95,165,.12)',   color: '#185FA5' },
+  esporte: { label: 'Esportes', bg: 'rgba(217,119,6,.12)',   color: '#D97706' },
+  estetica:{ label: 'Estética', bg: 'rgba(124,58,237,.12)',  color: '#7C3AED' },
 };
+
+const PAGE_SIZE = 20;
 
 function initials(nome) {
   return (nome || '?').split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
@@ -44,6 +48,7 @@ export default function Prospecting() {
   const [confirmRec, setConfirm]  = useState(null);
   const [saving, setSaving]       = useState(false);
   const [expanded, setExpanded]   = useState(null);
+  const [page, setPage]           = useState(0);
 
   // Vendedores
   const [sellers, setSellers]     = useState([]);
@@ -90,6 +95,9 @@ export default function Prospecting() {
   }, [selDate, fCrm, fStatus, fQ]);
 
   useEffect(() => { loadRecords(); }, [loadRecords]);
+
+  // Reset page when filters or date change
+  useEffect(() => { setPage(0); }, [selDate, fCrm, fStatus, fQ]);
 
   const handlePromote = async () => {
     if (!confirmRec) return;
@@ -176,6 +184,9 @@ export default function Prospecting() {
 
   const sem = records.filter(r => !sellerMap[r.id] && !r.promoted_at).length;
 
+  const totalPages  = Math.ceil(records.length / PAGE_SIZE);
+  const pagedRecords = records.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
   return (
     <div style={{ padding: '24px 28px', maxWidth: 1100 }}>
 
@@ -222,9 +233,11 @@ export default function Prospecting() {
           ))}
         </select>
         <select value={fCrm} onChange={e => setFCrm(e.target.value)} style={selectStyle}>
-          <option value="">Pet + Saúde</option>
+          <option value="">Todos os segmentos</option>
           <option value="pet">Pet</option>
           <option value="saude">Saúde</option>
+          <option value="esporte">Esportes</option>
+          <option value="estetica">Estética</option>
         </select>
         <input
           value={fQ}
@@ -293,6 +306,40 @@ export default function Prospecting() {
         </div>
       )}
 
+      {/* Controles de paginação */}
+      {records.length > PAGE_SIZE && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+          gap: 8, marginBottom: 8,
+        }}>
+          <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, records.length)} de {records.length}
+          </span>
+          <button
+            onClick={() => setPage(p => Math.max(0, p - 1))}
+            disabled={page === 0}
+            style={{
+              fontSize: 12, padding: '5px 12px', borderRadius: 'var(--radius)',
+              border: '1px solid var(--border)', background: page === 0 ? 'var(--card2)' : 'var(--card)',
+              color: page === 0 ? 'var(--muted)' : 'var(--text)', cursor: page === 0 ? 'not-allowed' : 'pointer',
+              fontWeight: 600,
+            }}>
+            ← Anteriores
+          </button>
+          <button
+            onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+            disabled={page >= totalPages - 1}
+            style={{
+              fontSize: 12, padding: '5px 12px', borderRadius: 'var(--radius)',
+              border: '1px solid var(--accent)', background: page >= totalPages - 1 ? 'var(--card2)' : 'var(--accent)',
+              color: page >= totalPages - 1 ? 'var(--muted)' : '#fff',
+              cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer', fontWeight: 600,
+            }}>
+            Próximos 20 →
+          </button>
+        </div>
+      )}
+
       {/* Lista */}
       {loading ? (
         <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--muted)' }}>Carregando...</div>
@@ -304,14 +351,14 @@ export default function Prospecting() {
         </div>
       ) : (
         <div style={{ background: 'var(--card)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
-          {records.map((rec, idx) => {
+          {pagedRecords.map((rec, idx) => {
             const sc = STATUS_CONFIG[rec.status] || STATUS_CONFIG.sem_resposta;
             const cc = CRM_CONFIG[rec.crm]       || { label: rec.crm || '—', bg: 'var(--card2)', color: 'var(--muted)' };
             const isExp = expanded === rec.id;
             const curSeller = sellerMap[rec.id] || '';
 
             return (
-              <div key={rec.id} style={{ borderBottom: idx < records.length - 1 ? '1px solid var(--border)' : 'none' }}>
+              <div key={rec.id} style={{ borderBottom: idx < pagedRecords.length - 1 ? '1px solid var(--border)' : 'none' }}>
                 {/* Linha principal */}
                 <div
                   style={{
@@ -436,9 +483,43 @@ export default function Prospecting() {
         </div>
       )}
 
+      {/* Paginação inferior */}
+      {records.length > PAGE_SIZE && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+          gap: 8, marginTop: 8,
+        }}>
+          <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+            Página {page + 1} de {totalPages}
+          </span>
+          <button
+            onClick={() => { setPage(p => Math.max(0, p - 1)); window.scrollTo(0, 0); }}
+            disabled={page === 0}
+            style={{
+              fontSize: 12, padding: '5px 12px', borderRadius: 'var(--radius)',
+              border: '1px solid var(--border)', background: page === 0 ? 'var(--card2)' : 'var(--card)',
+              color: page === 0 ? 'var(--muted)' : 'var(--text)', cursor: page === 0 ? 'not-allowed' : 'pointer',
+              fontWeight: 600,
+            }}>
+            ← Anteriores
+          </button>
+          <button
+            onClick={() => { setPage(p => Math.min(totalPages - 1, p + 1)); window.scrollTo(0, 0); }}
+            disabled={page >= totalPages - 1}
+            style={{
+              fontSize: 12, padding: '5px 12px', borderRadius: 'var(--radius)',
+              border: '1px solid var(--accent)', background: page >= totalPages - 1 ? 'var(--card2)' : 'var(--accent)',
+              color: page >= totalPages - 1 ? 'var(--muted)' : '#fff',
+              cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer', fontWeight: 600,
+            }}>
+            Próximos 20 →
+          </button>
+        </div>
+      )}
+
       {/* Nota de rodapé */}
       {records.length > 0 && (
-        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 10 }}>
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>
           Clique em qualquer linha para ver detalhes.
           {canPromote ? ' Apenas admins podem promover prospects para o funil.' : ''}
         </div>
