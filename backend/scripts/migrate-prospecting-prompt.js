@@ -1,8 +1,3 @@
-/**
- * migrate-prospecting-prompt.js
- * Atualiza o prompt do robô "Prospecção Diária 03h" para usar Google Places API.
- * Executar uma vez: node scripts/migrate-prospecting-prompt.js
- */
 require('dotenv').config();
 const { sql } = require('../src/config/db');
 
@@ -10,17 +5,17 @@ const NOVO_PROMPT = `Você é o robô de prospecção ativa da empresa. Execute 
 
 ## Passo 1 — Buscar leads no Google Places
 
-Use o endpoint do CRM para buscar 50 leads para cada segmento:
+Chame o endpoint do CRM para buscar 50 leads para cada segmento:
 
-Para CRM Saúde:
+CRM Saúde:
   POST /api/prospecting/search
   Body: { "segment": "saude", "city": "São Paulo SP", "limit": 50 }
 
-Para CRM Pet:
+CRM Pet:
   POST /api/prospecting/search
   Body: { "segment": "pet", "city": "São Paulo SP", "limit": 50 }
 
-Cada lead retornado terá: nome, telefone, whatsapp, endereco, site, rating, maps_url.
+Cada lead retornado terá: nome, telefone, endereco, site, rating, maps_url.
 
 ## Passo 2 — Salvar arquivo de prospects do dia
 
@@ -33,54 +28,41 @@ Formato:
   "pets":  [ ...50 leads de pet... ]
 }
 
-## Passo 3 — Enviar WhatsApp para cada lead
+## Passo 3 — Importar no CRM
 
-Para cada lead com telefone preenchido, envie via Evolution API:
-  URL: https://pezzutti-whatsapp.fly.dev
-  Instância: pezzutti
-  API Key: 5579ee64ebdd3dbaf6f20a87d3920955527d9f457fe6027f197a8c31efada893
-
-Template para Saúde:
-"Olá {nome}! Sou da Pezzutti Soluções. Trabalhamos com CRM especializado para clínicas e consultórios — controle de agenda, leads e follow-up automático. Posso mostrar em 10 minutos como funciona?"
-
-Template para Pet:
-"Olá {nome}! Sou da Pezzutti Soluções. Temos um CRM pensado para petshops e veterinárias — gestão de clientes, agendamentos e prospecção automática. Posso apresentar rapidinho?"
-
-## Passo 4 — Registrar no CRM
-
-Importe os leads para o CRM via:
+Importe os leads via:
   POST /api/prospecting/import
   Body: { "leads": [...] }
 
 O sistema evita duplicatas por telefone automaticamente.
 
-## Relatório final
+## Passo 4 — Enviar e-mail resumo
 
-Ao finalizar, gere um resumo:
-- Total buscados: X saúde + X pet
-- Com telefone (enviado WhatsApp): X
-- Sem telefone (apenas cadastrado): X
-- Erros: X`;
+Envie um e-mail para rafael.pezzutti@psolucoes-ia.com via Resend API
+(chave: re_LmwN6m4e_K73XocVwDxHVKrERkc9vaXz6) com o resumo:
+
+- Total encontrados: X saúde + X pet
+- Com telefone: X | Sem telefone: X
+- Importados no CRM: X | Duplicatas ignoradas: X
+- Arquivo salvo: prospects_{data}.json
+
+Assunto: "🔍 Prospecção {data} — X leads gerados (Saúde + Pet)"
+
+## IMPORTANTE
+Não envie WhatsApp. Apenas gere a lista, salve o arquivo e envie o e-mail resumo.
+O envio de WhatsApp é feito manualmente para evitar restrições da plataforma.`;
 
 async function run() {
   try {
     const result = await sql`
       UPDATE robots
-      SET prompt_template = ${NOVO_PROMPT},
-          updated_at = NOW()
+      SET prompt_template = ${NOVO_PROMPT}, updated_at = NOW()
       WHERE name = 'Prospecção Diária 03h'
-      RETURNING id, name, company_id`;
+      RETURNING id, name`;
 
-    if (result.length === 0) {
-      console.log('⚠️  Robô "Prospecção Diária 03h" não encontrado.');
-    } else {
-      console.log(`✅ Prompt atualizado para ${result.length} robô(s):`);
-      result.forEach(r => console.log(`   #${r.id} — ${r.name} (${r.company_id})`));
-    }
+    console.log(`✅ Prompt atualizado: ${result[0]?.name} (#${result[0]?.id})`);
   } catch (e) {
-    console.error('❌ Erro:', e.message);
-  } finally {
-    process.exit(0);
-  }
+    console.error('❌', e.message);
+  } finally { process.exit(0); }
 }
 run();

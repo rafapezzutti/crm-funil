@@ -30,7 +30,7 @@ function fmtDate(iso) {
 
 export default function Prospecting() {
   const { role } = useAuth();
-  const navigate  = useNavigate();
+  const navigate   = useNavigate();
   const canPromote = role === 'admin' || role === 'master';
 
   const [dates, setDates]         = useState([]);
@@ -45,12 +45,22 @@ export default function Prospecting() {
   const [saving, setSaving]       = useState(false);
   const [expanded, setExpanded]   = useState(null);
 
+  // Vendedores
+  const [sellers, setSellers]     = useState([]);
+  const [bulkSeller, setBulkSeller] = useState('');
+  const [assigning, setAssigning] = useState(false);
+
+  // Mapa local de vendedor_id por record id (sobrescreve o que viou do servidor até próximo fetch)
+  const [sellerMap, setSellerMap] = useState({});
+
   useEffect(() => {
     api.get('/prospecting/dates').then(r => {
       const ds = r.data.dates || [];
       setDates(ds);
       if (ds.length > 0) setSelDate(ds[0].date);
     }).catch(() => {});
+
+    api.get('/prospecting/sellers').then(r => setSellers(r.data || [])).catch(() => {});
   }, []);
 
   const loadRecords = useCallback(async () => {
@@ -65,8 +75,13 @@ export default function Prospecting() {
           q: fQ || undefined,
         },
       });
-      setRecords(r.data.records || []);
+      const recs = r.data.records || [];
+      setRecords(recs);
       setTotais(r.data.totais || {});
+      // Inicializar mapa com o que veio do servidor
+      const m = {};
+      recs.forEach(rec => { m[rec.id] = rec.vendedor_id || ''; });
+      setSellerMap(m);
     } catch (e) {
       console.error(e);
     } finally {
@@ -89,6 +104,63 @@ export default function Prospecting() {
     }
   };
 
+  // Atribuir vendedor a um único registro
+  const assignOne = async (recId, vendedorId) => {
+    setSellerMap(m => ({ ...m, [recId]: vendedorId }));
+    try {
+      await api.put(`/prospecting/records/${recId}`, { vendedor_id: vendedorId || null });
+    } catch {
+      // silencioso — o mapa local já atualizou visualmente
+    }
+  };
+
+  // Atribuir mesmo vendedor a todos os registros visíveis
+  const assignAll = async () => {
+    if (!bulkSeller || records.length === 0) return;
+    setAssigning(true);
+    const assignments = records
+      .filter(r => !r.promoted_at)
+      .map(r => ({ id: r.id, vendedor_id: bulkSeller }));
+    try {
+      await api.post('/prospecting/assign-bulk', { assignments });
+      const m = { ...sellerMap };
+      assignments.forEach(a => { m[a.id] = a.vendedor_id; });
+      setSellerMap(m);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Erro ao atribuir.');
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  // Distribuir aleatoriamente entre todos os vendedores
+  const assignRandom = async () => {
+    if (sellers.length === 0 || records.length === 0) return;
+    setAssigning(true);
+    const targets = records.filter(r => !r.promoted_at);
+    // Embaralhar lista de vendedores e distribuir round-robin
+    const shuffled = [...sellers].sort(() => Math.random() - 0.5);
+    const assignments = targets.map((rec, idx) => ({
+      id: rec.id,
+      vendedor_id: shuffled[idx % shuffled.length].id,
+    }));
+    try {
+      await api.post('/prospecting/assign-bulk', { assignments });
+      const m = { ...sellerMap };
+      assignments.forEach(a => { m[a.id] = a.vendedor_id; });
+      setSellerMap(m);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Erro ao atribuir.');
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const sellerName = id => {
+    const s = sellers.find(x => x.id === id);
+    return s ? s.name : '';
+  };
+
   const total    = Number(totais.total    || 0);
   const quentes  = Number(totais.quentes  || 0);
   const mornos   = Number(totais.mornos   || 0);
@@ -101,6 +173,8 @@ export default function Prospecting() {
     borderRadius: 'var(--radius)', border: '1px solid var(--border)',
     background: 'var(--card)', color: 'var(--text)',
   };
+
+  const sem = records.filter(r => !sellerMap[r.id] && !r.promoted_at).length;
 
   return (
     <div style={{ padding: '24px 28px', maxWidth: 1100 }}>
@@ -126,11 +200,11 @@ export default function Prospecting() {
       {/* Métricas */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 20 }}>
         {[
-          { label: 'Abordados',   val: total,     color: 'var(--text)' },
-          { label: '🔥 Quentes',  val: quentes,   color: '#D85A30' },
-          { label: '🌡️ Mornos',  val: mornos,    color: '#BA7517' },
-          { label: '📈 Resposta', val: taxaResp + '%', color: '#1D9E75' },
-          { label: '🎯 Promovidos', val: promovidos, color: '#534AB7' },
+          { label: 'Abordados',     val: total,          color: 'var(--text)' },
+          { label: '🔥 Quentes',    val: quentes,        color: '#D85A30' },
+          { label: '🌡️ Mornos',    val: mornos,          color: '#BA7517' },
+          { label: '📈 Resposta',   val: taxaResp + '%', color: '#1D9E75' },
+          { label: '🎯 Promovidos', val: promovidos,     color: '#534AB7' },
         ].map(m => (
           <div key={m.label} style={{ background: 'var(--card2)', borderRadius: 'var(--radius)', padding: '12px 14px', border: '1px solid var(--border)' }}>
             <div style={{ fontSize: 22, fontWeight: 700, color: m.color }}>{m.val}</div>
@@ -140,7 +214,7 @@ export default function Prospecting() {
       </div>
 
       {/* Filtros */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
         <select value={fStatus} onChange={e => setFStatus(e.target.value)} style={selectStyle}>
           <option value="">Todos os status</option>
           {Object.entries(STATUS_CONFIG).map(([k, v]) => (
@@ -163,6 +237,62 @@ export default function Prospecting() {
         </span>
       </div>
 
+      {/* Toolbar de atribuição de vendedor */}
+      {sellers.length > 0 && records.length > 0 && (
+        <div style={{
+          display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap',
+          background: 'var(--card2)', border: '1px solid var(--border)',
+          borderRadius: 'var(--radius)', padding: '10px 14px', marginBottom: 12,
+        }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap' }}>
+            👤 Designar Vendedor:
+          </span>
+          <select
+            value={bulkSeller}
+            onChange={e => setBulkSeller(e.target.value)}
+            style={{ ...selectStyle, minWidth: 180 }}
+          >
+            <option value="">— Selecionar vendedor —</option>
+            {sellers.map(s => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+          <button
+            onClick={assignAll}
+            disabled={!bulkSeller || assigning}
+            style={{
+              fontSize: 12, padding: '6px 14px', borderRadius: 'var(--radius)',
+              border: '1px solid var(--accent)', background: bulkSeller ? 'var(--accent)' : 'var(--card)',
+              color: bulkSeller ? '#fff' : 'var(--muted)',
+              cursor: bulkSeller ? 'pointer' : 'not-allowed', fontWeight: 600,
+            }}
+          >
+            {assigning ? '…' : `Atribuir a todos (${records.filter(r => !r.promoted_at).length})`}
+          </button>
+
+          <div style={{ flex: 1 }} />
+
+          <button
+            onClick={assignRandom}
+            disabled={assigning || sellers.length === 0}
+            style={{
+              fontSize: 12, padding: '6px 14px', borderRadius: 'var(--radius)',
+              border: '1px solid var(--border)', background: 'var(--card)',
+              color: 'var(--text)', cursor: 'pointer', fontWeight: 600,
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}
+          >
+            🎲 Gerar Aleatório
+          </button>
+
+          {sem > 0 && (
+            <span style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+              {sem} sem vendedor
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Lista */}
       {loading ? (
         <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--muted)' }}>Carregando...</div>
@@ -178,6 +308,7 @@ export default function Prospecting() {
             const sc = STATUS_CONFIG[rec.status] || STATUS_CONFIG.sem_resposta;
             const cc = CRM_CONFIG[rec.crm]       || { label: rec.crm || '—', bg: 'var(--card2)', color: 'var(--muted)' };
             const isExp = expanded === rec.id;
+            const curSeller = sellerMap[rec.id] || '';
 
             return (
               <div key={rec.id} style={{ borderBottom: idx < records.length - 1 ? '1px solid var(--border)' : 'none' }}>
@@ -185,7 +316,7 @@ export default function Prospecting() {
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: '40px minmax(0,2fr) minmax(0,1fr) minmax(0,1.8fr) minmax(0,1.6fr) auto',
+                    gridTemplateColumns: '40px minmax(0,2fr) minmax(0,1fr) minmax(0,1.8fr) minmax(0,1.5fr) auto',
                     gap: 12, alignItems: 'center', padding: '10px 16px', cursor: 'pointer',
                   }}
                   onClick={() => setExpanded(isExp ? null : rec.id)}
@@ -220,13 +351,36 @@ export default function Prospecting() {
                   {/* Resposta */}
                   <div style={{ fontSize: 12, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {rec.resposta
-                      ? `"${rec.resposta.slice(0, 60)}${rec.resposta.length > 60 ? '…' : ''}"`
+                      ? `"${rec.resposta.slice(0, 55)}${rec.resposta.length > 55 ? '…' : ''}"`
                       : '—'}
                   </div>
 
-                  {/* Próximo passo */}
-                  <div style={{ fontSize: 12, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {rec.proximo_passo || '—'}
+                  {/* Vendedor — dropdown por linha */}
+                  <div onClick={e => e.stopPropagation()}>
+                    {rec.promoted_at ? (
+                      <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                        {curSeller ? sellerName(curSeller) : '—'}
+                      </span>
+                    ) : sellers.length > 0 ? (
+                      <select
+                        value={curSeller}
+                        onChange={e => assignOne(rec.id, e.target.value)}
+                        style={{
+                          fontSize: 11, padding: '3px 6px', borderRadius: 6,
+                          border: curSeller ? '1px solid var(--accent)' : '1px solid var(--border)',
+                          background: curSeller ? 'rgba(31,111,235,.08)' : 'var(--card)',
+                          color: curSeller ? 'var(--accent)' : 'var(--muted)',
+                          maxWidth: '100%',
+                        }}
+                      >
+                        <option value="">— Vendedor —</option>
+                        {sellers.map(s => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span style={{ fontSize: 11, color: 'var(--muted)' }}>—</span>
+                    )}
                   </div>
 
                   {/* Ação */}
@@ -256,20 +410,23 @@ export default function Prospecting() {
                 </div>
 
                 {/* Detalhe expandido */}
-                {isExp && (rec.analise || rec.proximo_passo || rec.vendedor_nome) && (
+                {isExp && (rec.analise || rec.proximo_passo || rec.resposta) && (
                   <div style={{
-                    padding: '4px 16px 14px 68px', fontSize: 12, color: 'var(--muted)',
+                    padding: '6px 16px 14px 68px', fontSize: 12, color: 'var(--muted)',
                     display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8,
                     borderTop: '1px solid var(--border)', background: 'var(--card2)',
                   }}>
+                    {rec.resposta && (
+                      <div style={{ gridColumn: '1 / -1' }}>
+                        <span style={{ fontWeight: 600, color: 'var(--text)' }}>Resposta: </span>
+                        {rec.resposta}
+                      </div>
+                    )}
                     {rec.analise && (
                       <div><span style={{ fontWeight: 600, color: 'var(--text)' }}>Análise: </span>{rec.analise}</div>
                     )}
                     {rec.proximo_passo && (
                       <div><span style={{ fontWeight: 600, color: 'var(--text)' }}>Próximo passo: </span>{rec.proximo_passo}</div>
-                    )}
-                    {rec.vendedor_nome && (
-                      <div><span style={{ fontWeight: 600, color: 'var(--text)' }}>Vendedor: </span>{rec.vendedor_nome}</div>
                     )}
                   </div>
                 )}
@@ -314,6 +471,12 @@ export default function Prospecting() {
                 {STATUS_CONFIG[confirmRec.status]?.label || confirmRec.status}
               </strong>
             </p>
+            {sellerMap[confirmRec.id] && (
+              <p style={{ margin: '0 0 6px', fontSize: 12, color: 'var(--muted)' }}>
+                Vendedor designado:{' '}
+                <strong style={{ color: 'var(--accent)' }}>{sellerName(sellerMap[confirmRec.id])}</strong>
+              </p>
+            )}
             {confirmRec.resposta && (
               <p style={{ margin: '0 0 20px', fontSize: 12, color: 'var(--muted)', fontStyle: 'italic' }}>
                 "{confirmRec.resposta.slice(0, 120)}{confirmRec.resposta.length > 120 ? '…' : ''}"

@@ -462,15 +462,61 @@ router.post('/records/:id/promote', auth, async (req, res) => {
 // Atualiza status/analise/proximo_passo manualmente
 router.put('/records/:id', auth, async (req, res) => {
   try {
-    const { status, analise, proximo_passo } = req.body;
+    const { status, analise, proximo_passo, vendedor_id } = req.body;
     await sql`
       UPDATE prospecting_records
       SET status        = COALESCE(${status        || null}, status),
           analise       = COALESCE(${analise       || null}, analise),
           proximo_passo = COALESCE(${proximo_passo || null}, proximo_passo),
+          vendedor_id   = CASE WHEN ${vendedor_id !== undefined} THEN ${vendedor_id || null}::uuid
+                               ELSE vendedor_id END,
           updated_at    = NOW()
       WHERE id = ${req.params.id} AND company_id = ${req.companyId}`;
     res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/prospecting/sellers ──────────────────────────────────────────────
+// Lista vendedores ativos da empresa para o seletor de atribuição
+router.get('/sellers', auth, async (req, res) => {
+  try {
+    const members = await sql`
+      SELECT u.id, u.name, u.email
+      FROM (
+        SELECT user_id FROM seller_profiles WHERE company_id = ${req.companyId} AND ativo = true
+        UNION
+        SELECT user_id FROM company_members  WHERE company_id = ${req.companyId} AND role IN ('admin','master')
+      ) m
+      JOIN users u ON u.id = m.user_id
+      ORDER BY u.name`;
+    res.json(members);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/prospecting/assign-bulk ─────────────────────────────────────────
+// Atribui vendedor_id a uma lista de records (manual ou aleatório calculado no front)
+// Body: { assignments: [{id, vendedor_id}] }
+router.post('/assign-bulk', auth, async (req, res) => {
+  try {
+    const { assignments } = req.body;
+    if (!Array.isArray(assignments) || assignments.length === 0) {
+      return res.status(400).json({ error: 'assignments[] obrigatório.' });
+    }
+    let atualizados = 0;
+    for (const a of assignments) {
+      if (!a.id) continue;
+      await sql`
+        UPDATE prospecting_records
+        SET vendedor_id = ${a.vendedor_id || null}::uuid,
+            updated_at  = NOW()
+        WHERE id = ${a.id} AND company_id = ${req.companyId}`;
+      atualizados++;
+    }
+    res.json({ ok: true, atualizados });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
