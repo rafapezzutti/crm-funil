@@ -1,6 +1,9 @@
 const router  = require('express').Router();
 const auth    = require('../middleware/auth');
 const { sql } = require('../config/db');
+const { Resend } = require('resend');
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Helper: valida ROBOT_SECRET (usado nos endpoints do Cowork, sem JWT)
 function robotAuth(req, res, next) {
@@ -64,6 +67,91 @@ router.post('/:id/log-cowork', robotAuth, async (req, res) => {
     await sql`UPDATE robots SET updated_at = NOW() WHERE id = ${req.params.id}`;
     res.json(log);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/robots/:company_id/admins — lista e-mails dos admins/master da empresa (sem JWT)
+// Uso: GET /api/robots/admins?company_id=<uuid>
+router.get('/admins', robotAuth, async (req, res) => {
+  const { company_id } = req.query;
+  if (!company_id) return res.status(400).json({ error: 'company_id obrigatório.' });
+  try {
+    const admins = await sql`
+      SELECT u.name, u.email, cm.role
+      FROM company_members cm
+      JOIN users u ON u.id = cm.user_id
+      WHERE cm.company_id = ${company_id}
+        AND cm.role IN ('admin', 'master')
+        AND u.email IS NOT NULL
+      ORDER BY cm.role, u.name`;
+    res.json({ admins });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/robots/send-email — envia e-mail com ou sem anexo via Resend (sem JWT)
+// Body: {
+//   company_id: uuid,           (para buscar admins automaticamente, opcional se "to" fornecido)
+//   to: ['a@b.com'],            (opcional — se omitido, envia para os admins da empresa)
+//   subject: string,
+//   html: string,
+//   attachments: [{ filename: string, content: string (base64) }]  (opcional)
+// }
+router.post('/send-email', robotAuth, async (req, res) => {
+  const { company_id, to, subject, html, attachments } = req.body;
+  if (!subject || !html) return res.status(400).json({ error: 'subject e html são obrigatórios.' });
+
+  if (!process.env.RESEND_API_KEY || process.env.RESEND_API_KEY.startsWith('re_xxx')) {
+    return res.status(500).json({ error: 'RESEND_API_KEY não configurada.' });
+  }
+
+  try {
+    let recipients = to || [];
+
+    // Se não passou destinatários, busca os admins da empresa
+    if (recipients.length === 0 && company_id) {
+      const admins = await sql`
+        SELECT u.email
+        FROM company_members cm
+        JOIN users u ON u.id = cm.user_id
+        WHERE cm.company_id = ${company_id}
+          AND cm.role IN ('admin', 'master')
+          AND u.email IS NOT NULL`;
+      recipients = admins.map(a => a.email);
+    }
+
+    if (recipients.length === 0) {
+      return res.status(400).json({ error: 'Nenhum destinatário encontrado.' });
+    }
+
+    // Monta payload para o Resend
+    const payload = {
+      from: process.env.RESEND_FROM || 'Unimidia CRM <onboarding@resend.dev>',
+      to:   recipients,
+      subject,
+      html,
+    };
+
+    // Anexos: Resend aceita [{ filename, content (Buffer ou base64 string) }]
+    if (attachments && attachments.length > 0) {
+      payload.attachments = attachments.map(att => ({
+        filename: att.filename,
+        content:  att.content, // base64 string — Resend aceita direto
+      }));
+    }
+
+    const result = await resend.emails.send(payload);
+
+    res.json({
+      ok:           true,
+      email_id:     result?.id || result?.data?.id,
+      recipients,
+      has_attachment: (attachments || []).length > 0,
+    });
+  } catch (err) {
+    console.error('[send-email]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
