@@ -4,6 +4,7 @@ import api from '../api';
 import LeadModal from '../components/LeadModal';
 import { useCrmTypes } from '../CrmTypesContext';
 import { useDebounce } from '../hooks/useDebounce';
+import { useAuth } from '../AuthContext';
 
 const STAGES = [
   { key:'prospeccao', label:'Prospecção',  color:'var(--stage-prospeccao)', icon:'🎯' },
@@ -32,28 +33,49 @@ function whatsappAge(ts) {
   return `${diff}d atrás`;
 }
 
-function LeadCard({ lead, onOpen, onMove }) {
+function LeadCard({ lead, onOpen, onMove, selectMode, selected, onToggle }) {
   const { crmLabel, crmBadgeClass } = useCrmTypes();
   const days    = lead.stage === 'piloto' ? trialDays(lead.trial_end) : null;
   const zap     = whatsappAge(lead.ultimo_whatsapp_at);
   const isProsp = lead.origem === 'prospeccao_ativa';
+  const isSelected = selected?.has(lead.id);
+
+  const handleClick = () => {
+    if (selectMode) { onToggle(lead.id); }
+    else { onOpen(lead.id); }
+  };
+
   return (
     <div
       style={{
-        background:'var(--card2)', border:'1px solid var(--border)',
+        background: isSelected ? 'rgba(31,111,235,.08)' : 'var(--card2)',
+        border: isSelected ? '1px solid var(--accent)' : '1px solid var(--border)',
         borderRadius:'var(--radius)', padding:'12px', cursor:'pointer',
         transition:'border-color .15s',
-        borderLeft: isProsp ? '3px solid #25D366' : '1px solid var(--border)',
+        borderLeft: isSelected ? '3px solid var(--accent)' : isProsp ? '3px solid #25D366' : '1px solid var(--border)',
+        position: 'relative',
       }}
-      onMouseEnter={e => e.currentTarget.style.borderColor='var(--accent)'}
-      onMouseLeave={e => e.currentTarget.style.borderColor= isProsp ? '#25D366' : 'var(--border)'}
-      onClick={() => onOpen(lead.id)}
+      onMouseEnter={e => { if (!isSelected) e.currentTarget.style.borderColor='var(--accent)'; }}
+      onMouseLeave={e => { if (!isSelected) e.currentTarget.style.borderColor= isProsp ? '#25D366' : 'var(--border)'; }}
+      onClick={handleClick}
     >
+      {/* Checkbox em modo seleção */}
+      {selectMode && (
+        <div style={{
+          position:'absolute', top:8, right:8,
+          width:18, height:18, borderRadius:4,
+          border: isSelected ? 'none' : '2px solid var(--border)',
+          background: isSelected ? 'var(--accent)' : 'transparent',
+          display:'flex', alignItems:'center', justifyContent:'center',
+        }}>
+          {isSelected && <span style={{color:'#fff', fontSize:12, fontWeight:700}}>✓</span>}
+        </div>
+      )}
       <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:6}}>
-        <div style={{fontWeight:600, fontSize:13, lineHeight:1.3, flex:1, marginRight:4}}>
+        <div style={{fontWeight:600, fontSize:13, lineHeight:1.3, flex:1, marginRight: selectMode ? 24 : 4}}>
           {lead.empresa || lead.nome}
         </div>
-        {lead.score && <span title={lead.score}>{SCORE_ICON[lead.score]}</span>}
+        {!selectMode && lead.score && <span title={lead.score}>{SCORE_ICON[lead.score]}</span>}
       </div>
       {lead.empresa && (
         <div style={{fontSize:11, color:'var(--muted)', marginBottom:6}}>{lead.nome}</div>
@@ -113,39 +135,81 @@ function LeadCard({ lead, onOpen, onMove }) {
           </div>
         )}
       </div>
-      {/* Move stage buttons */}
-      <div style={{display:'flex', gap:4, marginTop:8}} onClick={e => e.stopPropagation()}>
-        {STAGES.filter(s => s.key !== lead.stage).map(s => (
-          <button key={s.key}
-            className="btn btn-ghost btn-sm"
-            style={{flex:1, fontSize:10, padding:'3px 4px'}}
-            onClick={() => onMove(lead, s.key)}
-            title={`Mover para ${s.label}`}
-          >
-            → {s.icon}
-          </button>
-        ))}
-      </div>
+      {/* Move stage buttons — ocultos em modo seleção */}
+      {!selectMode && (
+        <div style={{display:'flex', gap:4, marginTop:8}} onClick={e => e.stopPropagation()}>
+          {STAGES.filter(s => s.key !== lead.stage).map(s => (
+            <button key={s.key}
+              className="btn btn-ghost btn-sm"
+              style={{flex:1, fontSize:10, padding:'3px 4px'}}
+              onClick={() => onMove(lead, s.key)}
+              title={`Mover para ${s.label}`}
+            >
+              → {s.icon}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 export default function Funil() {
   const nav  = useNavigate();
+  const { role } = useAuth();
   const { types, crmLabel } = useCrmTypes();
-  const [leads,   setLeads]   = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [modal,   setModal]   = useState(false);
-  const [q,       setQ]       = useState('');
-  const [crmF,    setCrmF]    = useState('');
-  const [scoreF,  setScoreF]  = useState('');
-  const [origemF, setOrigemF] = useState('');
-  const [moveDlg, setMoveDlg] = useState(null); // {lead, targetStage}
-  const [motivo,  setMotivo]  = useState('');
+  const [leads,      setLeads]      = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [modal,      setModal]      = useState(false);
+  const [q,          setQ]          = useState('');
+  const [crmF,       setCrmF]       = useState('');
+  const [scoreF,     setScoreF]     = useState('');
+  const [origemF,    setOrigemF]    = useState('');
+  const [moveDlg,    setMoveDlg]    = useState(null);
+  const [motivo,     setMotivo]     = useState('');
+
+  // Seleção em lote
+  const isAdmin     = ['admin', 'master'].includes(role);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected,   setSelected]   = useState(new Set());
+  const [deleting,   setDeleting]   = useState(false);
+  const [confirmBulk, setConfirmBulk] = useState(false);
 
   const debouncedQ = useDebounce(q, 300);
 
   useEffect(() => { load(); }, [debouncedQ, crmF, scoreF, origemF]);
+
+  function toggleSelect(id) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function selectAll() {
+    setSelected(new Set(leads.map(l => l.id)));
+  }
+
+  function exitSelectMode() {
+    setSelectMode(false);
+    setSelected(new Set());
+    setConfirmBulk(false);
+  }
+
+  async function bulkDelete() {
+    setDeleting(true);
+    try {
+      await Promise.all([...selected].map(id => api.delete(`/leads/${id}`)));
+      exitSelectMode();
+      load();
+    } catch (e) {
+      alert(e.response?.data?.error || 'Erro ao excluir leads.');
+    } finally {
+      setDeleting(false);
+      setConfirmBulk(false);
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -188,9 +252,23 @@ export default function Funil() {
             {leads.length} lead{leads.length!==1?'s':''} ativos
           </span>
         </div>
-        <button className="btn btn-primary" onClick={() => setModal(true)}>
-          ＋ Novo Lead
-        </button>
+        <div style={{display:'flex', gap:8}}>
+          {isAdmin && !selectMode && (
+            <button className="btn btn-ghost" onClick={() => setSelectMode(true)}>
+              ☑ Selecionar
+            </button>
+          )}
+          {selectMode && (
+            <button className="btn btn-ghost" onClick={exitSelectMode}>
+              ✕ Cancelar seleção
+            </button>
+          )}
+          {!selectMode && (
+            <button className="btn btn-primary" onClick={() => setModal(true)}>
+              ＋ Novo Lead
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Filtros */}
@@ -249,7 +327,10 @@ export default function Funil() {
                   {cards.map(lead => (
                     <LeadCard key={lead.id} lead={lead}
                       onOpen={id => nav(`/leads/${id}`)}
-                      onMove={(l, t) => doMove(l, t)} />
+                      onMove={(l, t) => doMove(l, t)}
+                      selectMode={selectMode}
+                      selected={selected}
+                      onToggle={toggleSelect} />
                   ))}
                   {cards.length === 0 && (
                     <div style={{
@@ -294,6 +375,81 @@ export default function Funil() {
       {/* Modal criar lead */}
       {modal && (
         <LeadModal onClose={() => setModal(false)} onSaved={() => { setModal(false); load(); }} />
+      )}
+
+      {/* Barra flutuante de seleção em lote */}
+      {selectMode && (
+        <div style={{
+          position:'fixed', bottom:28, left:'50%', transform:'translateX(-50%)',
+          background:'var(--card)', border:'1px solid var(--border)',
+          borderRadius:999, padding:'10px 20px',
+          boxShadow:'0 8px 32px rgba(0,0,0,.45)',
+          display:'flex', alignItems:'center', gap:14, zIndex:999,
+          minWidth:320,
+        }}>
+          <span style={{fontSize:13, fontWeight:700}}>
+            {selected.size > 0 ? `${selected.size} selecionado${selected.size>1?'s':''}` : 'Clique nos cards para selecionar'}
+          </span>
+          {selected.size < leads.length && (
+            <button
+              onClick={selectAll}
+              style={{
+                fontSize:11, padding:'4px 12px', borderRadius:999,
+                border:'1px solid var(--border)', background:'none',
+                color:'var(--text)', cursor:'pointer',
+              }}>
+              Todos ({leads.length})
+            </button>
+          )}
+          {selected.size > 0 && (
+            <button
+              onClick={() => setSelected(new Set())}
+              style={{
+                fontSize:11, padding:'4px 12px', borderRadius:999,
+                border:'1px solid var(--border)', background:'none',
+                color:'var(--muted)', cursor:'pointer',
+              }}>
+              Limpar
+            </button>
+          )}
+          <div style={{flex:1}} />
+          <button
+            onClick={() => setConfirmBulk(true)}
+            disabled={selected.size === 0 || deleting}
+            style={{
+              fontSize:13, padding:'6px 18px', borderRadius:999,
+              border:'none',
+              background: selected.size > 0 ? 'var(--danger)' : 'var(--card2)',
+              color: selected.size > 0 ? '#fff' : 'var(--muted)',
+              cursor: selected.size > 0 ? 'pointer' : 'not-allowed',
+              fontWeight:600,
+            }}>
+            🗑 Excluir {selected.size > 0 ? `(${selected.size})` : ''}
+          </button>
+        </div>
+      )}
+
+      {/* Modal confirmação bulk delete */}
+      {confirmBulk && (
+        <div className="overlay" onClick={e => e.target===e.currentTarget && setConfirmBulk(false)}>
+          <div style={{
+            background:'var(--card)', border:'1px solid var(--border)',
+            borderRadius:'var(--radius-lg)', padding:24, maxWidth:400, width:'100%',
+          }}>
+            <h3 style={{margin:'0 0 12px', fontSize:16}}>Excluir {selected.size} lead{selected.size>1?'s':''}?</h3>
+            <p style={{margin:'0 0 20px', fontSize:13, color:'var(--muted)', lineHeight:1.6}}>
+              Esta ação é permanente e não pode ser desfeita. Todos os dados, atividades e histórico dos leads selecionados serão removidos.
+            </p>
+            <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
+              <button className="btn btn-ghost" onClick={() => setConfirmBulk(false)} disabled={deleting}>
+                Cancelar
+              </button>
+              <button className="btn btn-danger" onClick={bulkDelete} disabled={deleting}>
+                {deleting ? 'Excluindo...' : `Excluir ${selected.size} lead${selected.size>1?'s':''}`}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
