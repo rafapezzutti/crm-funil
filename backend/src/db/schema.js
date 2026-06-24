@@ -288,6 +288,16 @@ async function ensureSchema(force = false) {
     CREATE INDEX IF NOT EXISTS idx_prosp_records_phone
       ON prospecting_records(telefone, company_id)`);
 
+  // Colunas adicionais para prospecção via Google Places (migração)
+  await runSafe('prospecting_records_place_id', () => sql`
+    ALTER TABLE prospecting_records ADD COLUMN IF NOT EXISTS place_id VARCHAR(200)`);
+  await runSafe('prospecting_records_whatsapp_msg', () => sql`
+    ALTER TABLE prospecting_records ADD COLUMN IF NOT EXISTS whatsapp_msg TEXT`);
+  await runSafe('prospecting_records_maps_url', () => sql`
+    ALTER TABLE prospecting_records ADD COLUMN IF NOT EXISTS maps_url TEXT`);
+  await runSafe('prospecting_records_rating', () => sql`
+    ALTER TABLE prospecting_records ADD COLUMN IF NOT EXISTS rating NUMERIC(3,1)`);
+
   // Consentimento de monitoramento WhatsApp (auditoria)
   results.push(await runSafe('number_consents', () => sql`
     CREATE TABLE IF NOT EXISTS number_consents (
