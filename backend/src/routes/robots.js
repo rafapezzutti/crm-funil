@@ -3,7 +3,7 @@ const auth    = require('../middleware/auth');
 const { sql } = require('../config/db');
 const { Resend } = require('resend');
 const XLSX    = require('xlsx');
-const { searchSegment } = require('../lib/places');
+const { searchSegment, MUNICIPIOS_BRASIL } = require('../lib/places');
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -486,90 +486,156 @@ router.post('/:id/execute-server', robotAuth, async (req, res) => {
 
 // ── Executor: unimidia_prospeccao ─────────────────────────────────────────────
 async function executeUnimidiaProspeccao(robot) {
-  const START      = Date.now();
-  const robotId    = robot.id;
-  const companyId  = robot.company_id;
-  const hoje       = new Date().toISOString().split('T')[0];
-  const ontem      = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+  const START     = Date.now();
+  const robotId   = robot.id;
+  const companyId = robot.company_id;
+  const hoje      = new Date().toISOString().split('T')[0];
+  const ontem     = new Date(Date.now() - 86400000).toISOString().split('T')[0];
 
   console.log(`[Robot ${robotId}] Iniciando unimidia_prospeccao para ${robot.company_name}...`);
 
   try {
-    // 1. Busca IDs já abordados (ontem + hoje) para excluir
-    const jaAbordados = await sql`
-      SELECT place_id FROM prospecting_records
-      WHERE company_id = ${companyId}
-        AND data_abordagem >= ${ontem}::date
-        AND place_id IS NOT NULL`;
-    const excludeIds = new Set(jaAbordados.map(r => r.place_id));
-    console.log(`[Robot ${robotId}] ${excludeIds.size} prospects já abordados recentemente (excluindo).`);
+    // ── 1. Carrega estado (índice do município atual) ─────────────────────────
+    const [robotRow] = await sql`SELECT state_json FROM robots WHERE id = ${robotId}`;
+    const state      = robotRow?.state_json || {};
+    const muniIdx    = typeof state.municipio_idx === 'number' ? state.municipio_idx : 0;
+    console.log(`[Robot ${robotId}] Iniciando no município idx ${muniIdx}: "${MUNICIPIOS_BRASIL[muniIdx % MUNICIPIOS_BRASIL.length]}"`);
 
-    // 2. Busca por segmento
+    // ── 2. Carry-forward: leads de ontem não abordados ────────────────────────
+    // "Não abordado" = sem_resposta ou nao_entregue (vendedor ainda não enviou / falhou entrega)
+    const leadsFw = await sql`
+      SELECT id, nome, empresa, telefone, crm AS segmento, status,
+             place_id, whatsapp_msg AS mensagem, maps_url, rating
+      FROM prospecting_records
+      WHERE company_id = ${companyId}
+        AND data_abordagem = ${ontem}::date
+        AND status IN ('sem_resposta', 'nao_entregue')`;
+    console.log(`[Robot ${robotId}] ${leadsFw.length} leads não abordados ontem (carry-forward).`);
+
+    // ── 3. IDs já na base (para não duplicar no Places) ───────────────────────
+    const todosIds = await sql`
+      SELECT place_id FROM prospecting_records
+      WHERE company_id = ${companyId} AND place_id IS NOT NULL`;
+    const excludeIds = new Set(todosIds.map(r => r.place_id));
+
+    // ── 4. Segmentos ──────────────────────────────────────────────────────────
     const SEGMENTOS = [
-      { key: 'unimidia_bares',    label: 'Bares/Restaurantes/Cafés',    msgKey: 'A', city: 'São Paulo SP' },
-      { key: 'unimidia_hoteis',   label: 'Hotéis e Hostels',            msgKey: 'B', city: 'São Paulo' },
-      { key: 'unimidia_clinicas', label: 'Clínicas Médicas/Odonto',     msgKey: 'C', city: 'São Paulo' },
+      { key: 'unimidia_bares',    label: 'Bares/Restaurantes/Cafés',   msgKey: 'A' },
+      { key: 'unimidia_esportes', label: 'Esportes (Tênis/Beach)',      msgKey: 'E' },
+      { key: 'unimidia_clinicas', label: 'Clínicas Médicas/Odonto',    msgKey: 'C' },
     ];
 
     const MENSAGENS = {
       A: 'Olá! Somos da Unimidia 📺 Trabalhamos com televisores inteligentes para restaurantes e bares: cardápio digital, promoções em tempo real e entretenimento. Tudo gerenciado pelo celular. Posso te mostrar como funciona rapidinho?',
-      B: 'Oi! Sou da Unimidia 📺 Ajudamos hotéis e hostels a modernizar a experiência dos hóspedes com TVs com conteúdo personalizado — informações do hotel, atrações locais e entretenimento. Tem 5 minutinhos para eu apresentar?',
+      E: 'Oi! Sou da Unimidia 📺 Ajudamos academias e quadras de tênis/beach tennis a engajar alunos e atrair novos clientes com TVs inteligentes — ranking ao vivo, agenda de aulas, promoções na tela. Posso apresentar em 5 min?',
       C: 'Olá! Sou da equipe Unimidia 📺 Trabalhamos com soluções de TV para clínicas: sala de espera com conteúdo educativo e institucional, reduz percepção de tempo de espera e valoriza sua marca. Posso te mostrar?',
       D: 'Oi, tudo bem? Vim conhecer o {nome}! Sou da Unimidia, trabalhamos com mídia digital para estabelecimentos como o seu. Vale 5 min para eu te apresentar nossa solução? 📺',
     };
 
-    const allLeads = [];
-    const statsSeg = {};
+    const allLeads  = [];
+    const statsSeg  = {};
+    const carryFwBySegmento = {};
+
+    // Agrupa carry-forward por segmento
+    for (const fw of leadsFw) {
+      const seg = fw.segmento; // ex: unimidia_bares
+      if (!carryFwBySegmento[seg]) carryFwBySegmento[seg] = [];
+      carryFwBySegmento[seg].push(fw);
+    }
+
+    // Busca novos leads percorrendo municípios até completar `needed` por segmento.
+    // Garante sempre 50 por segmento (carry-fw + novos = 50).
+    // Avança o cursor ao município mais distante usado em qualquer segmento.
+    async function buscarAteFull(segKey, startIdx, needed) {
+      const leads = [];
+      let idx = startIdx;
+      while (leads.length < needed && idx < MUNICIPIOS_BRASIL.length) {
+        const loc    = MUNICIPIOS_BRASIL[idx];
+        const toFetch = Math.min(needed - leads.length + 10, 60);
+        try {
+          console.log(`[Robot ${robotId}] ${segKey} @ "${loc}" — buscando ${toFetch} (${leads.length}/${needed})`);
+          const batch = await searchSegment(segKey, loc, toFetch, excludeIds);
+          leads.push(...batch);
+        } catch (e) {
+          console.warn(`[Robot ${robotId}] ${segKey} @ "${loc}" erro: ${e.message}`);
+        }
+        idx++;
+      }
+      return { leads: leads.slice(0, needed), nextIdx: idx };
+    }
+
+    let maxNextIdx = muniIdx; // cursor avança ao máximo usado entre todos os segmentos
 
     for (const seg of SEGMENTOS) {
-      console.log(`[Robot ${robotId}] Buscando segmento ${seg.key}...`);
-      let leads = [];
-      try {
-        leads = await searchSegment(seg.key, seg.city, 60); // Busca 60, vai filtrar para 50
-      } catch (e) {
-        console.warn(`[Robot ${robotId}] Erro no segmento ${seg.key}: ${e.message}`);
-      }
-      // Filtra já abordados
-      const novos = leads.filter(l => !excludeIds.has(l.place_id)).slice(0, 50);
-      statsSeg[seg.label] = novos.length;
-      console.log(`[Robot ${robotId}] ${seg.key}: ${leads.length} encontrados, ${novos.length} novos.`);
+      const fwLeads        = (carryFwBySegmento[seg.key] || []).slice(0, 50); // máx 50 fw
+      const slotsParaNovos = Math.max(0, 50 - fwLeads.length);
 
-      // Atribui modelo de mensagem alternando A/D (para bares), B (hoteis), C/D (clinicas)
-      const modelKeys = ['A', 'B', 'C', 'D'];
-      novos.forEach((l, i) => {
+      let novosPlaces = [];
+      if (slotsParaNovos > 0) {
+        const { leads, nextIdx } = await buscarAteFull(seg.key, muniIdx, slotsParaNovos);
+        novosPlaces = leads;
+        maxNextIdx  = Math.max(maxNextIdx, nextIdx);
+      }
+
+      // Combina: carry-forward (prioridade) + novos = sempre 50 se possível
+      const todosSegmento = [...fwLeads, ...novosPlaces];
+      statsSeg[seg.label] = todosSegmento.length;
+      console.log(`[Robot ${robotId}] ${seg.key}: ${fwLeads.length} fw + ${novosPlaces.length} novos = ${todosSegmento.length}`);
+
+      todosSegmento.forEach((l, i) => {
+        const isCarryFw = i < fwLeads.length;
         const msgKey = seg.msgKey === 'A' ? (i % 2 === 0 ? 'A' : 'D')
-                     : seg.msgKey === 'B' ? 'B'
-                     : (i % 2 === 0 ? 'C' : 'D');
-        const mensagem = MENSAGENS[msgKey].replace('{nome}', l.nome);
-        allLeads.push({ ...l, segmento_label: seg.label, modelo: msgKey, mensagem });
+                     : seg.msgKey === 'C' ? (i % 2 === 0 ? 'C' : 'D')
+                     : seg.msgKey;
+        const mensagem = (l.mensagem && isCarryFw)
+          ? l.mensagem
+          : MENSAGENS[msgKey].replace('{nome}', l.nome);
+        allLeads.push({
+          ...l,
+          segmento_label: seg.label,
+          modelo: msgKey,
+          mensagem,
+          carry_forward: isCarryFw,
+        });
       });
     }
 
-    const totalGeral = allLeads.length;
-    console.log(`[Robot ${robotId}] Total de prospects: ${totalGeral}`);
+    const totalGeral    = allLeads.length;
+    const totalFw       = allLeads.filter(l => l.carry_forward).length;
+    const totalNovos    = totalGeral - totalFw;
+    console.log(`[Robot ${robotId}] Total: ${totalGeral} (${totalFw} carry-fw + ${totalNovos} novos)`);
 
-    // 3. Salva os novos prospects na tabela prospecting_records
-    if (allLeads.length > 0) {
-      for (const l of allLeads) {
-        try {
-          await sql`
-            INSERT INTO prospecting_records
-              (company_id, nome, empresa, telefone, crm, status, data_abordagem, place_id, origem, whatsapp_msg)
-            VALUES
-              (${companyId}, ${l.nome}, ${l.nome}, ${l.telefone || null},
-               ${l.segmento}, 'sem_resposta', ${hoje}::date,
-               ${l.place_id || null}, 'google_places', ${l.mensagem})
-            ON CONFLICT DO NOTHING`;
-        } catch (e) {
-          console.warn(`[Robot ${robotId}] Erro ao salvar prospect "${l.nome}": ${e.message}`);
-        }
+    // ── 5. Salva APENAS os novos no CRM (carry-forward já estão na base) ──────
+    const novosParaSalvar = allLeads.filter(l => !l.carry_forward);
+    for (const l of novosParaSalvar) {
+      try {
+        await sql`
+          INSERT INTO prospecting_records
+            (company_id, nome, empresa, telefone, crm, status, data_abordagem, place_id, origem, whatsapp_msg)
+          VALUES
+            (${companyId}, ${l.nome}, ${l.nome}, ${l.telefone || null},
+             ${l.segmento}, 'sem_resposta', ${hoje}::date,
+             ${l.place_id || null}, 'google_places', ${l.mensagem})
+          ON CONFLICT DO NOTHING`;
+      } catch (e) {
+        console.warn(`[Robot ${robotId}] Erro ao salvar "${l.nome}": ${e.message}`);
       }
-      console.log(`[Robot ${robotId}] ${allLeads.length} prospects salvos no CRM.`);
     }
+    // Atualiza data dos carry-forward para hoje (para aparecer na lista do dia)
+    const fwIds = allLeads.filter(l => l.carry_forward && l.id).map(l => l.id);
+    if (fwIds.length > 0) {
+      await sql`UPDATE prospecting_records SET data_abordagem = ${hoje}::date WHERE id = ANY(${fwIds})`;
+    }
+    console.log(`[Robot ${robotId}] ${novosParaSalvar.length} novos salvos, ${fwIds.length} carry-fw atualizados.`);
 
-    // 4. Gera Excel
-    const dataStr = hoje.replace(/-/g, '');
-    const sheetRows = allLeads.map((l, i) => ({
+    // ── 6. Avança índice de município ─────────────────────────────────────────
+    const savedNextIdx = maxNextIdx % MUNICIPIOS_BRASIL.length;
+    await sql`UPDATE robots SET state_json = ${JSON.stringify({ municipio_idx: savedNextIdx })}, updated_at = NOW() WHERE id = ${robotId}`;
+    console.log(`[Robot ${robotId}] Próximo município: "${MUNICIPIOS_BRASIL[savedNextIdx]}" (idx ${savedNextIdx})`);
+
+    // ── 7. Gera Excel ─────────────────────────────────────────────────────────
+    const dataStr  = hoje.replace(/-/g, '');
+    const sheetRows = allLeads.map(l => ({
       'Nome do Estabelecimento': l.nome,
       'Segmento':                l.segmento_label,
       'Telefone':                l.telefone || '',
@@ -577,100 +643,91 @@ async function executeUnimidiaProspeccao(robot) {
       'Avaliação Google':        l.rating || '',
       'Modelo de Mensagem':      l.modelo,
       'Mensagem Personalizada':  l.mensagem,
-      'Status':                  'Novo',
+      'Status':                  l.carry_forward ? 'Carry-forward (não abordado ontem)' : 'Novo',
     }));
 
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(sheetRows);
-    // Larguras das colunas
-    ws['!cols'] = [{ wch: 40 }, { wch: 25 }, { wch: 18 }, { wch: 45 }, { wch: 14 }, { wch: 8 }, { wch: 90 }, { wch: 8 }];
+    ws['!cols'] = [{ wch: 40 }, { wch: 28 }, { wch: 18 }, { wch: 45 }, { wch: 14 }, { wch: 8 }, { wch: 90 }, { wch: 30 }];
     XLSX.utils.book_append_sheet(wb, ws, 'Prospecção');
     const xlsxBuf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
     const xlsxB64 = xlsxBuf.toString('base64');
     console.log(`[Robot ${robotId}] Excel gerado (${Math.round(xlsxBuf.length / 1024)} KB).`);
 
-    // 5. Envia e-mail via Resend
-    const geradoEm = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+    // ── 8. Envia e-mail ───────────────────────────────────────────────────────
+    const geradoEm      = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
     const [hojeD, hojeM, hojeY] = hoje.split('-').reverse();
     const dataFormatada = `${hojeD}/${hojeM}/${hojeY}`;
+    const muniInicio    = MUNICIPIOS_BRASIL[muniIdx % MUNICIPIOS_BRASIL.length];
+    const muniLabel     = maxNextIdx > muniIdx + 1
+      ? `${muniInicio} + ${maxNextIdx - muniIdx - 1} mais`
+      : muniInicio;
 
-    // Cards de segmento com cores distintas
     const SEG_COLORS = {
-      'Bares/Restaurantes/Cafés': { bg: '#1a3a5c', icon: '🍺', label: 'Bares & Restaurantes' },
-      'Hotéis e Hostels':         { bg: '#1b4332', icon: '🏨', label: 'Hotéis & Hostels' },
-      'Clínicas Médicas/Odonto':  { bg: '#4a1d6b', icon: '🏥', label: 'Clínicas & Consultórios' },
+      'Bares/Restaurantes/Cafés': { bg: '#1a3a5c', icon: '🍺' },
+      'Esportes (Tênis/Beach)':   { bg: '#1b4a2c', icon: '🎾' },
+      'Clínicas Médicas/Odonto':  { bg: '#4a1d6b', icon: '🏥' },
     };
 
     const segCards = Object.entries(statsSeg).map(([nome, qtde]) => {
-      const c = SEG_COLORS[nome] || { bg: '#333', icon: '📍', label: nome };
+      const c = SEG_COLORS[nome] || { bg: '#333', icon: '📍' };
       return `
         <td style="width:33%;padding:16px;background:${c.bg};color:white;text-align:center;border-radius:8px;vertical-align:top">
           <div style="font-size:28px;margin-bottom:4px">${c.icon}</div>
           <div style="font-size:36px;font-weight:700;line-height:1">${qtde}</div>
-          <div style="font-size:11px;margin-top:6px;opacity:.85;line-height:1.3">${c.label}</div>
+          <div style="font-size:11px;margin-top:6px;opacity:.85;line-height:1.3">${nome}</div>
         </td>`;
     }).join('<td style="width:8px"></td>');
 
     const emailHtml = `
 <div style="font-family:Arial,sans-serif;max-width:620px;margin:0 auto;background:#f4f6f8">
-
-  <!-- Header -->
   <div style="background:linear-gradient(135deg,#0d1b4b 0%,#1a237e 60%,#283593 100%);padding:28px 24px;border-radius:10px 10px 0 0">
     <table style="width:100%"><tr>
       <td>
         <div style="color:#90CAF9;font-size:12px;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Robô 1 — Prospecção Ativa</div>
         <h1 style="color:white;margin:0;font-size:22px;font-weight:700">📺 Unimidia — Lista de Prospecção</h1>
-        <p style="color:#90CAF9;margin:6px 0 0;font-size:13px">${dataFormatada} &nbsp;·&nbsp; Gerado às ${geradoEm.split(' ')[1] || geradoEm}</p>
+        <p style="color:#90CAF9;margin:6px 0 0;font-size:13px">${dataFormatada} &nbsp;·&nbsp; ${muniLabel} &nbsp;·&nbsp; Gerado às ${geradoEm.split(' ')[1] || geradoEm}</p>
       </td>
       <td style="text-align:right;vertical-align:top">
         <div style="background:rgba(255,255,255,.15);border-radius:50%;width:52px;height:52px;display:inline-flex;align-items:center;justify-content:center;font-size:26px">📺</div>
       </td>
     </tr></table>
   </div>
-
-  <!-- Total destaque -->
   <div style="background:#1565C0;padding:16px 24px;text-align:center">
-    <span style="color:#E3F2FD;font-size:13px">Total de prospects encontrados hoje</span>
+    <span style="color:#E3F2FD;font-size:13px">Total de prospects na lista de hoje</span>
     <div style="color:white;font-size:48px;font-weight:700;line-height:1.1">${totalGeral}</div>
-    <span style="color:#90CAF9;font-size:12px">prospects novos • ${dataFormatada}</span>
+    <span style="color:#90CAF9;font-size:12px">${totalNovos} novos + ${totalFw} carry-forward • ${dataFormatada}</span>
   </div>
-
-  <!-- Cards por segmento -->
   <div style="background:#f4f6f8;padding:20px 20px 0">
-    <table style="width:100%;border-collapse:separate;border-spacing:8px">
-      <tr>${segCards}</tr>
-    </table>
+    <table style="width:100%;border-collapse:separate;border-spacing:8px"><tr>${segCards}</tr></table>
   </div>
-
-  <!-- Corpo -->
   <div style="background:#f4f6f8;padding:20px">
-
-    <!-- Info Excel -->
     <div style="background:white;border-radius:8px;padding:16px;border-left:4px solid #1565C0;margin-bottom:12px">
       <strong style="color:#1565C0">📎 Excel em anexo:</strong>
       <span style="color:#444;font-size:13px"> prospectos_unimidia_${dataStr}.xlsx</span>
       <div style="color:#666;font-size:12px;margin-top:6px">
-        Colunas: Nome · Segmento · Telefone · Endereço · Avaliação · Modelo de Mensagem · Mensagem Personalizada
+        Colunas: Nome · Segmento · Telefone · Endereço · Avaliação · Modelo de Mensagem · Mensagem Personalizada · Status
       </div>
     </div>
-
-    <!-- Mensagens prontas -->
+    ${totalFw > 0 ? `
+    <div style="background:#FFF3E0;border-radius:8px;padding:14px;margin-bottom:12px;border-left:4px solid #FF9800">
+      <div style="font-weight:700;color:#E65100;margin-bottom:4px">♻️ ${totalFw} prospects carry-forward</div>
+      <div style="color:#BF360C;font-size:12px">Estes leads estavam na lista de ontem mas não foram abordados. Priorize-os hoje!</div>
+    </div>` : ''}
     <div style="background:white;border-radius:8px;padding:16px;margin-bottom:12px">
       <div style="font-weight:700;color:#1a237e;margin-bottom:10px">💬 Modelos de mensagem incluídos</div>
       <table style="width:100%;font-size:12px;color:#555">
         <tr>
-          <td style="padding:4px 8px;background:#E3F2FD;border-radius:4px;margin:2px"><strong>A</strong> — Bares/Restaurantes/Cafés</td>
-          <td style="padding:4px 8px;background:#E8F5E9;border-radius:4px;margin:2px"><strong>B</strong> — Hotéis & Hostels</td>
+          <td style="padding:4px 8px;background:#E3F2FD;border-radius:4px"><strong>A</strong> — Bares/Restaurantes/Cafés</td>
+          <td style="padding:4px 8px;background:#E8F5E9;border-radius:4px"><strong>E</strong> — Esportes (Tênis/Beach Tennis)</td>
         </tr>
         <tr><td style="height:6px"></td></tr>
         <tr>
-          <td style="padding:4px 8px;background:#F3E5F5;border-radius:4px;margin:2px"><strong>C</strong> — Clínicas & Consultórios</td>
-          <td style="padding:4px 8px;background:#FFF8E1;border-radius:4px;margin:2px"><strong>D</strong> — Genérico (alternativo)</td>
+          <td style="padding:4px 8px;background:#F3E5F5;border-radius:4px"><strong>C</strong> — Clínicas & Consultórios</td>
+          <td style="padding:4px 8px;background:#FFF8E1;border-radius:4px"><strong>D</strong> — Genérico (alternativo)</td>
         </tr>
       </table>
     </div>
-
-    <!-- Próximos passos -->
     <div style="background:#E8EAF6;border-radius:8px;padding:14px;margin-bottom:16px">
       <div style="font-weight:700;color:#283593;margin-bottom:8px">🚀 Próximos passos</div>
       <ol style="color:#3949AB;font-size:13px;margin:0;padding-left:18px;line-height:1.8">
@@ -680,10 +737,9 @@ async function executeUnimidiaProspeccao(robot) {
         <li>Iniciar envios via WhatsApp</li>
       </ol>
     </div>
-
-    <!-- Rodapé -->
     <p style="color:#999;font-size:11px;text-align:center;margin-top:8px">
       Gerado automaticamente pelo Robô 1 • Unimidia CRM • ${geradoEm}<br>
+      Localidade: ${muniLabel} (idx ${muniIdx}→${savedNextIdx}/${MUNICIPIOS_BRASIL.length}) &nbsp;·&nbsp;
       <a href="https://pfunil.ia.br" style="color:#1565C0">pfunil.ia.br</a>
     </p>
   </div>
@@ -695,13 +751,12 @@ async function executeUnimidiaProspeccao(robot) {
         JOIN users u ON u.id = cm.user_id
         WHERE cm.company_id = ${companyId} AND cm.role IN ('admin','master','vendedor') AND u.email IS NOT NULL`;
       const recipients = [...new Set(admins.map(a => a.email))];
-
       if (recipients.length > 0 && process.env.RESEND_API_KEY && !process.env.RESEND_API_KEY.startsWith('re_xxx')) {
         const resendInst = new Resend(process.env.RESEND_API_KEY);
         await resendInst.emails.send({
           from:        process.env.RESEND_FROM || 'Unimidia CRM <onboarding@resend.dev>',
           to:          recipients,
-          subject:     `Unimidia — Lista de Prospecção ${hoje}`,
+          subject:     `Unimidia — Lista de Prospecção ${dataFormatada} · ${muniLabel}`,
           html:        emailHtml,
           attachments: [{ filename: `prospectos_unimidia_${dataStr}.xlsx`, content: xlsxB64 }],
         });
@@ -711,12 +766,10 @@ async function executeUnimidiaProspeccao(robot) {
       console.warn(`[Robot ${robotId}] Erro ao enviar e-mail: ${e.message}`);
     }
 
-    // 6. Salva log e limpa fila
-    const durMs = Date.now() - START;
-    const output = `✅ Prospecção concluída em ${Math.round(durMs / 1000)}s\n\nTotal: ${totalGeral} prospects\n${Object.entries(statsSeg).map(([k, v]) => `• ${k}: ${v}`).join('\n')}\n\nProspects salvos no CRM e e-mail enviado com Excel anexado.`;
-    await sql`
-      INSERT INTO robot_logs (robot_id, company_id, status, output, duration_ms)
-      VALUES (${robotId}, ${companyId}, 'ok', ${output}, ${durMs})`;
+    // ── 9. Log e limpa fila ───────────────────────────────────────────────────
+    const durMs  = Date.now() - START;
+    const output = `✅ Prospecção concluída em ${Math.round(durMs / 1000)}s\n\nLocalidade: ${locality}\nTotal: ${totalGeral} (${totalNovos} novos + ${totalFw} carry-fw)\n${Object.entries(statsSeg).map(([k, v]) => `• ${k}: ${v}`).join('\n')}`;
+    await sql`INSERT INTO robot_logs (robot_id, company_id, status, output, duration_ms) VALUES (${robotId}, ${companyId}, 'ok', ${output}, ${durMs})`;
     await sql`UPDATE robots SET queued_at = NULL, updated_at = NOW() WHERE id = ${robotId}`;
     console.log(`[Robot ${robotId}] Concluído em ${Math.round(durMs / 1000)}s.`);
 
@@ -724,9 +777,7 @@ async function executeUnimidiaProspeccao(robot) {
     const durMs = Date.now() - START;
     console.error(`[Robot ${robotId}] Erro:`, err.message);
     try {
-      await sql`
-        INSERT INTO robot_logs (robot_id, company_id, status, output, duration_ms)
-        VALUES (${robotId}, ${companyId}, 'erro', ${`❌ Erro: ${err.message}`}, ${durMs})`;
+      await sql`INSERT INTO robot_logs (robot_id, company_id, status, output, duration_ms) VALUES (${robotId}, ${companyId}, 'erro', ${`❌ Erro: ${err.message}`}, ${durMs})`;
       await sql`UPDATE robots SET queued_at = NULL, updated_at = NOW() WHERE id = ${robotId}`;
     } catch { /* ignora */ }
   }
