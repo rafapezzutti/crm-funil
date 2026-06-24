@@ -2,6 +2,8 @@ const router  = require('express').Router();
 const auth    = require('../middleware/auth');
 const { sql } = require('../config/db');
 const { Resend } = require('resend');
+const XLSX    = require('xlsx');
+const { searchSegment } = require('../lib/places');
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -445,6 +447,203 @@ router.get('/:id/context', robotAuth, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ── POST /api/robots/:id/execute-server ───────────────────────────────────────
+// Execução server-side em background (robôs pesados: unimidia_prospeccao)
+// Usa robotAuth — retorna 200 imediatamente e processa de forma assíncrona.
+router.post('/:id/execute-server', robotAuth, async (req, res) => {
+  const robotId = Number(req.params.id);
+  try {
+    const [robot] = await sql`
+      SELECT r.*, c.name AS company_name
+      FROM robots r
+      JOIN companies c ON c.id = r.company_id
+      WHERE r.id = ${robotId}`;
+    if (!robot) return res.status(404).json({ error: 'Robô não encontrado.' });
+
+    const EXECUTORS = { unimidia_prospeccao: executeUnimidiaProspeccao };
+    if (!EXECUTORS[robot.tipo]) {
+      return res.status(400).json({ error: `Tipo "${robot.tipo}" não suportado para execução server-side.` });
+    }
+
+    // Garante que queued_at esteja setado (para o frontend mostrar "executando")
+    if (!robot.queued_at) {
+      await sql`UPDATE robots SET queued_at = NOW() WHERE id = ${robotId}`;
+    }
+
+    // Retorna imediatamente
+    res.json({ ok: true, message: 'Execução iniciada em background.', robot_id: robotId, tipo: robot.tipo });
+
+    // Executa de forma assíncrona (não bloqueia o request)
+    EXECUTORS[robot.tipo](robot).catch(err => {
+      console.error(`[Robot ${robotId}] Erro fatal na execução:`, err.message);
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Executor: unimidia_prospeccao ─────────────────────────────────────────────
+async function executeUnimidiaProspeccao(robot) {
+  const START      = Date.now();
+  const robotId    = robot.id;
+  const companyId  = robot.company_id;
+  const hoje       = new Date().toISOString().split('T')[0];
+  const ontem      = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
+  console.log(`[Robot ${robotId}] Iniciando unimidia_prospeccao para ${robot.company_name}...`);
+
+  try {
+    // 1. Busca IDs já abordados (ontem + hoje) para excluir
+    const jaAbordados = await sql`
+      SELECT place_id FROM prospecting_records
+      WHERE company_id = ${companyId}
+        AND data_abordagem >= ${ontem}::date
+        AND place_id IS NOT NULL`;
+    const excludeIds = new Set(jaAbordados.map(r => r.place_id));
+    console.log(`[Robot ${robotId}] ${excludeIds.size} prospects já abordados recentemente (excluindo).`);
+
+    // 2. Busca por segmento
+    const SEGMENTOS = [
+      { key: 'unimidia_bares',    label: 'Bares/Restaurantes/Cafés',    msgKey: 'A', city: 'São Paulo SP' },
+      { key: 'unimidia_hoteis',   label: 'Hotéis e Hostels',            msgKey: 'B', city: 'São Paulo' },
+      { key: 'unimidia_clinicas', label: 'Clínicas Médicas/Odonto',     msgKey: 'C', city: 'São Paulo' },
+    ];
+
+    const MENSAGENS = {
+      A: 'Olá! Somos da Unimidia 📺 Trabalhamos com televisores inteligentes para restaurantes e bares: cardápio digital, promoções em tempo real e entretenimento. Tudo gerenciado pelo celular. Posso te mostrar como funciona rapidinho?',
+      B: 'Oi! Sou da Unimidia 📺 Ajudamos hotéis e hostels a modernizar a experiência dos hóspedes com TVs com conteúdo personalizado — informações do hotel, atrações locais e entretenimento. Tem 5 minutinhos para eu apresentar?',
+      C: 'Olá! Sou da equipe Unimidia 📺 Trabalhamos com soluções de TV para clínicas: sala de espera com conteúdo educativo e institucional, reduz percepção de tempo de espera e valoriza sua marca. Posso te mostrar?',
+      D: 'Oi, tudo bem? Vim conhecer o {nome}! Sou da Unimidia, trabalhamos com mídia digital para estabelecimentos como o seu. Vale 5 min para eu te apresentar nossa solução? 📺',
+    };
+
+    const allLeads = [];
+    const statsSeg = {};
+
+    for (const seg of SEGMENTOS) {
+      console.log(`[Robot ${robotId}] Buscando segmento ${seg.key}...`);
+      let leads = [];
+      try {
+        leads = await searchSegment(seg.key, seg.city, 60); // Busca 60, vai filtrar para 50
+      } catch (e) {
+        console.warn(`[Robot ${robotId}] Erro no segmento ${seg.key}: ${e.message}`);
+      }
+      // Filtra já abordados
+      const novos = leads.filter(l => !excludeIds.has(l.place_id)).slice(0, 50);
+      statsSeg[seg.label] = novos.length;
+      console.log(`[Robot ${robotId}] ${seg.key}: ${leads.length} encontrados, ${novos.length} novos.`);
+
+      // Atribui modelo de mensagem alternando A/D (para bares), B (hoteis), C/D (clinicas)
+      const modelKeys = ['A', 'B', 'C', 'D'];
+      novos.forEach((l, i) => {
+        const msgKey = seg.msgKey === 'A' ? (i % 2 === 0 ? 'A' : 'D')
+                     : seg.msgKey === 'B' ? 'B'
+                     : (i % 2 === 0 ? 'C' : 'D');
+        const mensagem = MENSAGENS[msgKey].replace('{nome}', l.nome);
+        allLeads.push({ ...l, segmento_label: seg.label, modelo: msgKey, mensagem });
+      });
+    }
+
+    const totalGeral = allLeads.length;
+    console.log(`[Robot ${robotId}] Total de prospects: ${totalGeral}`);
+
+    // 3. Salva os novos prospects na tabela prospecting_records
+    if (allLeads.length > 0) {
+      for (const l of allLeads) {
+        try {
+          await sql`
+            INSERT INTO prospecting_records
+              (company_id, nome, empresa, telefone, crm, status, data_abordagem, place_id, origem, whatsapp_msg)
+            VALUES
+              (${companyId}, ${l.nome}, ${l.nome}, ${l.telefone || null},
+               ${l.segmento}, 'sem_resposta', ${hoje}::date,
+               ${l.place_id || null}, 'google_places', ${l.mensagem})
+            ON CONFLICT DO NOTHING`;
+        } catch (e) {
+          console.warn(`[Robot ${robotId}] Erro ao salvar prospect "${l.nome}": ${e.message}`);
+        }
+      }
+      console.log(`[Robot ${robotId}] ${allLeads.length} prospects salvos no CRM.`);
+    }
+
+    // 4. Gera Excel
+    const dataStr = hoje.replace(/-/g, '');
+    const sheetRows = allLeads.map((l, i) => ({
+      'Nome do Estabelecimento': l.nome,
+      'Segmento':                l.segmento_label,
+      'Telefone':                l.telefone || '',
+      'Endereço':                l.endereco || '',
+      'Avaliação Google':        l.rating || '',
+      'Modelo de Mensagem':      l.modelo,
+      'Mensagem Personalizada':  l.mensagem,
+      'Status':                  'Novo',
+    }));
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(sheetRows);
+    // Larguras das colunas
+    ws['!cols'] = [{ wch: 40 }, { wch: 25 }, { wch: 18 }, { wch: 45 }, { wch: 14 }, { wch: 8 }, { wch: 90 }, { wch: 8 }];
+    XLSX.utils.book_append_sheet(wb, ws, 'Prospecção');
+    const xlsxBuf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const xlsxB64 = xlsxBuf.toString('base64');
+    console.log(`[Robot ${robotId}] Excel gerado (${Math.round(xlsxBuf.length / 1024)} KB).`);
+
+    // 5. Envia e-mail via Resend
+    const emailHtml = `
+      <h2>🎯 Unimidia — Lista de Prospecção ${hoje}</h2>
+      <p><strong>Total de prospects:</strong> ${totalGeral}</p>
+      <table border="1" cellpadding="6" style="border-collapse:collapse;font-size:14px">
+        <tr style="background:#f0f0f0"><th>Segmento</th><th>Qtde</th></tr>
+        ${Object.entries(statsSeg).map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('')}
+      </table>
+      <p style="color:#666;font-size:12px;margin-top:16px">
+        Arquivo Excel com mensagens personalizadas em anexo.<br>
+        Gerado às ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
+      </p>`;
+
+    try {
+      const admins = await sql`
+        SELECT u.email FROM company_members cm
+        JOIN users u ON u.id = cm.user_id
+        WHERE cm.company_id = ${companyId} AND cm.role IN ('admin','master') AND u.email IS NOT NULL`;
+      const recipients = admins.map(a => a.email);
+
+      if (recipients.length > 0 && process.env.RESEND_API_KEY && !process.env.RESEND_API_KEY.startsWith('re_xxx')) {
+        const resendInst = new Resend(process.env.RESEND_API_KEY);
+        await resendInst.emails.send({
+          from:        process.env.RESEND_FROM || 'Unimidia CRM <onboarding@resend.dev>',
+          to:          recipients,
+          subject:     `Unimidia — Lista de Prospecção ${hoje}`,
+          html:        emailHtml,
+          attachments: [{ filename: `prospectos_unimidia_${dataStr}.xlsx`, content: xlsxB64 }],
+        });
+        console.log(`[Robot ${robotId}] E-mail enviado para: ${recipients.join(', ')}`);
+      }
+    } catch (e) {
+      console.warn(`[Robot ${robotId}] Erro ao enviar e-mail: ${e.message}`);
+    }
+
+    // 6. Salva log e limpa fila
+    const durMs = Date.now() - START;
+    const output = `✅ Prospecção concluída em ${Math.round(durMs / 1000)}s\n\nTotal: ${totalGeral} prospects\n${Object.entries(statsSeg).map(([k, v]) => `• ${k}: ${v}`).join('\n')}\n\nProspects salvos no CRM e e-mail enviado com Excel anexado.`;
+    await sql`
+      INSERT INTO robot_logs (robot_id, company_id, status, output, duration_ms)
+      VALUES (${robotId}, ${companyId}, 'ok', ${output}, ${durMs})`;
+    await sql`UPDATE robots SET queued_at = NULL, updated_at = NOW() WHERE id = ${robotId}`;
+    console.log(`[Robot ${robotId}] Concluído em ${Math.round(durMs / 1000)}s.`);
+
+  } catch (err) {
+    const durMs = Date.now() - START;
+    console.error(`[Robot ${robotId}] Erro:`, err.message);
+    try {
+      await sql`
+        INSERT INTO robot_logs (robot_id, company_id, status, output, duration_ms)
+        VALUES (${robotId}, ${companyId}, 'erro', ${`❌ Erro: ${err.message}`}, ${durMs})`;
+      await sql`UPDATE robots SET queued_at = NULL, updated_at = NOW() WHERE id = ${robotId}`;
+    } catch { /* ignora */ }
+  }
+}
 
 // ── A partir daqui, todos os endpoints exigem JWT ──────────────────────────────
 router.use(auth);
