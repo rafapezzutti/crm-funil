@@ -247,9 +247,11 @@ async function searchSegment(segment, city = 'São Paulo SP', limit = 50) {
             // Precisa ter telefone ou site
             if (!phone && !website) continue;
 
-            // Validação de telefone para Unimidia (celular OU fixo)
+            // Validação de telefone para Unimidia (celular OU fixo).
+            // Se não tem telefone mas tem website, inclui mesmo assim —
+            // o vendedor pode buscar o contato via site/Maps.
             if (isUnimidia) {
-              if (!isValidPhoneForUnimidia(phone)) continue;
+              if (phone && !isValidPhoneForUnimidia(phone)) continue;
               if (isBlacklisted(r.name)) continue;
             }
 
@@ -285,10 +287,4 @@ async function searchSegment(segment, city = 'São Paulo SP', limit = 50) {
     } while (pagetoken && pages < 3 && results.length < limit);
   }
 
-  return results.slice(0, limit);
-}
-
-module.exports = {
-  placesSearch, placeDetails, sleep,
-  searchSegment, SEGMENT_QUERIES, VALID_TYPES, isBlacklisted,
-};
+  return 
