@@ -693,8 +693,8 @@ async function executeUnimidiaProspeccao(robot) {
       const admins = await sql`
         SELECT u.email FROM company_members cm
         JOIN users u ON u.id = cm.user_id
-        WHERE cm.company_id = ${companyId} AND cm.role IN ('admin','master') AND u.email IS NOT NULL`;
-      const recipients = admins.map(a => a.email);
+        WHERE cm.company_id = ${companyId} AND cm.role IN ('admin','master','vendedor') AND u.email IS NOT NULL`;
+      const recipients = [...new Set(admins.map(a => a.email))];
 
       if (recipients.length > 0 && process.env.RESEND_API_KEY && !process.env.RESEND_API_KEY.startsWith('re_xxx')) {
         const resendInst = new Resend(process.env.RESEND_API_KEY);
