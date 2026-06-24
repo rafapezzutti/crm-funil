@@ -768,7 +768,7 @@ async function executeUnimidiaProspeccao(robot) {
 
     // ── 9. Log e limpa fila ───────────────────────────────────────────────────
     const durMs  = Date.now() - START;
-    const output = `✅ Prospecção concluída em ${Math.round(durMs / 1000)}s\n\nLocalidade: ${locality}\nTotal: ${totalGeral} (${totalNovos} novos + ${totalFw} carry-fw)\n${Object.entries(statsSeg).map(([k, v]) => `• ${k}: ${v}`).join('\n')}`;
+    const output = `✅ Prospecção concluída em ${Math.round(durMs / 1000)}s\n\nLocalidade: ${muniLabel}\nTotal: ${totalGeral} (${totalNovos} novos + ${totalFw} carry-fw)\n${Object.entries(statsSeg).map(([k, v]) => `• ${k}: ${v}`).join('\n')}`;
     await sql`INSERT INTO robot_logs (robot_id, company_id, status, output, duration_ms) VALUES (${robotId}, ${companyId}, 'ok', ${output}, ${durMs})`;
     await sql`UPDATE robots SET queued_at = NULL, updated_at = NOW() WHERE id = ${robotId}`;
     console.log(`[Robot ${robotId}] Concluído em ${Math.round(durMs / 1000)}s.`);
