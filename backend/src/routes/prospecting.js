@@ -420,15 +420,17 @@ router.post('/records/:id/promote', auth, async (req, res) => {
 // Atualiza status/analise/proximo_passo manualmente
 router.put('/records/:id', auth, async (req, res) => {
   try {
-    const { status, analise, proximo_passo, vendedor_id } = req.body;
+    const { status, analise, proximo_passo, vendedor_id, comentario_vendedor } = req.body;
     await sql`
       UPDATE prospecting_records
-      SET status        = COALESCE(${status        || null}, status),
-          analise       = COALESCE(${analise       || null}, analise),
-          proximo_passo = COALESCE(${proximo_passo || null}, proximo_passo),
-          vendedor_id   = CASE WHEN ${vendedor_id !== undefined} THEN ${vendedor_id || null}::uuid
-                               ELSE vendedor_id END,
-          updated_at    = NOW()
+      SET status               = COALESCE(${status        || null}, status),
+          analise              = COALESCE(${analise       || null}, analise),
+          proximo_passo        = COALESCE(${proximo_passo || null}, proximo_passo),
+          vendedor_id          = CASE WHEN ${vendedor_id !== undefined} THEN ${vendedor_id || null}::uuid
+                                      ELSE vendedor_id END,
+          comentario_vendedor  = CASE WHEN ${comentario_vendedor !== undefined} THEN ${comentario_vendedor || null}
+                                      ELSE comentario_vendedor END,
+          updated_at           = NOW()
       WHERE id = ${req.params.id} AND company_id = ${req.companyId}`;
     res.json({ ok: true });
   } catch (err) {

@@ -297,6 +297,8 @@ async function ensureSchema(force = false) {
     ALTER TABLE prospecting_records ADD COLUMN IF NOT EXISTS maps_url TEXT`);
   await runSafe('prospecting_records_rating', () => sql`
     ALTER TABLE prospecting_records ADD COLUMN IF NOT EXISTS rating NUMERIC(3,1)`);
+  await runSafe('prospecting_records_comentario_vendedor', () => sql`
+    ALTER TABLE prospecting_records ADD COLUMN IF NOT EXISTS comentario_vendedor TEXT`);
 
   // Consentimento de monitoramento WhatsApp (auditoria)
   results.push(await runSafe('number_consents', () => sql`

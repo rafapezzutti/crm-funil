@@ -68,8 +68,11 @@ export default function Prospecting() {
   const [bulkSeller, setBulkSeller] = useState('');
   const [assigning, setAssigning] = useState(false);
 
-  // Mapa local de vendedor_id por record id (sobrescreve o que viou do servidor até próximo fetch)
+  // Mapa local de vendedor_id por record id (sobrescreve o que veio do servidor até próximo fetch)
   const [sellerMap, setSellerMap] = useState({});
+
+  // Mapa local de comentário do vendedor por record id
+  const [commentMap, setCommentMap] = useState({});
 
   useEffect(() => {
     api.get('/prospecting/dates').then(r => {
@@ -96,10 +99,15 @@ export default function Prospecting() {
       const recs = r.data.records || [];
       setRecords(recs);
       setTotais(r.data.totais || {});
-      // Inicializar mapa com o que veio do servidor
+      // Inicializar mapas com o que veio do servidor
       const m = {};
-      recs.forEach(rec => { m[rec.id] = rec.vendedor_id || ''; });
+      const cm = {};
+      recs.forEach(rec => {
+        m[rec.id]  = rec.vendedor_id         || '';
+        cm[rec.id] = rec.comentario_vendedor || '';
+      });
       setSellerMap(m);
+      setCommentMap(cm);
     } catch (e) {
       console.error(e);
     } finally {
@@ -122,6 +130,16 @@ export default function Prospecting() {
       alert(err.response?.data?.error || 'Erro ao promover.');
       setSaving(false);
       setConfirm(null);
+    }
+  };
+
+  // Salvar comentário do vendedor (chamado no onBlur do input)
+  const saveComment = async (recId, text) => {
+    setCommentMap(m => ({ ...m, [recId]: text }));
+    try {
+      await api.put(`/prospecting/records/${recId}`, { comentario_vendedor: text });
+    } catch {
+      // silencioso
     }
   };
 
@@ -375,7 +393,7 @@ export default function Prospecting() {
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: '40px minmax(0,2fr) minmax(0,1fr) minmax(0,1.8fr) minmax(0,1.5fr) auto',
+                    gridTemplateColumns: '40px minmax(0,2fr) minmax(0,1fr) minmax(0,1.5fr) minmax(0,1.8fr) minmax(0,1.5fr) auto',
                     gap: 12, alignItems: 'center', padding: '10px 16px', cursor: 'pointer',
                   }}
                   onClick={() => setExpanded(isExp ? null : rec.id)}
@@ -412,6 +430,25 @@ export default function Prospecting() {
                     {rec.resposta
                       ? `"${rec.resposta.slice(0, 55)}${rec.resposta.length > 55 ? '…' : ''}"`
                       : '—'}
+                  </div>
+
+                  {/* Comentário do vendedor */}
+                  <div onClick={e => e.stopPropagation()}>
+                    <input
+                      type="text"
+                      value={commentMap[rec.id] ?? ''}
+                      onChange={e => setCommentMap(m => ({ ...m, [rec.id]: e.target.value }))}
+                      onBlur={e => saveComment(rec.id, e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+                      placeholder="Comentário..."
+                      style={{
+                        width: '100%', fontSize: 11, padding: '3px 7px',
+                        borderRadius: 6, border: '1px solid var(--border)',
+                        background: commentMap[rec.id] ? 'rgba(31,111,235,.06)' : 'var(--card)',
+                        color: 'var(--text)',
+                        outline: 'none',
+                      }}
+                    />
                   </div>
 
                   {/* Vendedor — dropdown por linha */}
