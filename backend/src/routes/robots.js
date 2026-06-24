@@ -110,16 +110,16 @@ router.post('/send-email', robotAuth, async (req, res) => {
   try {
     let recipients = to || [];
 
-    // Se não passou destinatários, busca os admins da empresa
+    // Se não passou destinatários, busca admins e vendedores da empresa
     if (recipients.length === 0 && company_id) {
-      const admins = await sql`
+      const members = await sql`
         SELECT u.email
         FROM company_members cm
         JOIN users u ON u.id = cm.user_id
         WHERE cm.company_id = ${company_id}
-          AND cm.role IN ('admin', 'master')
+          AND cm.role IN ('admin', 'master', 'vendedor')
           AND u.email IS NOT NULL`;
-      recipients = admins.map(a => a.email);
+      recipients = members.map(a => a.email);
     }
 
     if (recipients.length === 0) {
@@ -624,6 +624,19 @@ router.delete('/:id', async (req, res) => {
 
 // ── PUT /api/robots/:id/queue — enfileira para execução imediata ───────────────
 router.put('/:id/queue', async (req, res) => {
+  try {
+    const [robot] = await sql`
+      UPDATE robots SET queued_at = NOW() WHERE id = ${req.params.id}
+      RETURNING id, name, queued_at`;
+    if (!robot) return res.status(404).json({ error: 'Robô não encontrado.' });
+    res.json(robot);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/robots/:id/run — alias de queue (usado pelo frontend) ────────────
+router.post('/:id/run', async (req, res) => {
   try {
     const [robot] = await sql`
       UPDATE robots SET queued_at = NOW() WHERE id = ${req.params.id}
