@@ -590,17 +590,104 @@ async function executeUnimidiaProspeccao(robot) {
     console.log(`[Robot ${robotId}] Excel gerado (${Math.round(xlsxBuf.length / 1024)} KB).`);
 
     // 5. Envia e-mail via Resend
+    const geradoEm = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+    const [hojeD, hojeM, hojeY] = hoje.split('-').reverse();
+    const dataFormatada = `${hojeD}/${hojeM}/${hojeY}`;
+
+    // Cards de segmento com cores distintas
+    const SEG_COLORS = {
+      'Bares/Restaurantes/Cafés': { bg: '#1a3a5c', icon: '🍺', label: 'Bares & Restaurantes' },
+      'Hotéis e Hostels':         { bg: '#1b4332', icon: '🏨', label: 'Hotéis & Hostels' },
+      'Clínicas Médicas/Odonto':  { bg: '#4a1d6b', icon: '🏥', label: 'Clínicas & Consultórios' },
+    };
+
+    const segCards = Object.entries(statsSeg).map(([nome, qtde]) => {
+      const c = SEG_COLORS[nome] || { bg: '#333', icon: '📍', label: nome };
+      return `
+        <td style="width:33%;padding:16px;background:${c.bg};color:white;text-align:center;border-radius:8px;vertical-align:top">
+          <div style="font-size:28px;margin-bottom:4px">${c.icon}</div>
+          <div style="font-size:36px;font-weight:700;line-height:1">${qtde}</div>
+          <div style="font-size:11px;margin-top:6px;opacity:.85;line-height:1.3">${c.label}</div>
+        </td>`;
+    }).join('<td style="width:8px"></td>');
+
     const emailHtml = `
-      <h2>🎯 Unimidia — Lista de Prospecção ${hoje}</h2>
-      <p><strong>Total de prospects:</strong> ${totalGeral}</p>
-      <table border="1" cellpadding="6" style="border-collapse:collapse;font-size:14px">
-        <tr style="background:#f0f0f0"><th>Segmento</th><th>Qtde</th></tr>
-        ${Object.entries(statsSeg).map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('')}
+<div style="font-family:Arial,sans-serif;max-width:620px;margin:0 auto;background:#f4f6f8">
+
+  <!-- Header -->
+  <div style="background:linear-gradient(135deg,#0d1b4b 0%,#1a237e 60%,#283593 100%);padding:28px 24px;border-radius:10px 10px 0 0">
+    <table style="width:100%"><tr>
+      <td>
+        <div style="color:#90CAF9;font-size:12px;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Robô 1 — Prospecção Ativa</div>
+        <h1 style="color:white;margin:0;font-size:22px;font-weight:700">📺 Unimidia — Lista de Prospecção</h1>
+        <p style="color:#90CAF9;margin:6px 0 0;font-size:13px">${dataFormatada} &nbsp;·&nbsp; Gerado às ${geradoEm.split(' ')[1] || geradoEm}</p>
+      </td>
+      <td style="text-align:right;vertical-align:top">
+        <div style="background:rgba(255,255,255,.15);border-radius:50%;width:52px;height:52px;display:inline-flex;align-items:center;justify-content:center;font-size:26px">📺</div>
+      </td>
+    </tr></table>
+  </div>
+
+  <!-- Total destaque -->
+  <div style="background:#1565C0;padding:16px 24px;text-align:center">
+    <span style="color:#E3F2FD;font-size:13px">Total de prospects encontrados hoje</span>
+    <div style="color:white;font-size:48px;font-weight:700;line-height:1.1">${totalGeral}</div>
+    <span style="color:#90CAF9;font-size:12px">prospects novos • ${dataFormatada}</span>
+  </div>
+
+  <!-- Cards por segmento -->
+  <div style="background:#f4f6f8;padding:20px 20px 0">
+    <table style="width:100%;border-collapse:separate;border-spacing:8px">
+      <tr>${segCards}</tr>
+    </table>
+  </div>
+
+  <!-- Corpo -->
+  <div style="background:#f4f6f8;padding:20px">
+
+    <!-- Info Excel -->
+    <div style="background:white;border-radius:8px;padding:16px;border-left:4px solid #1565C0;margin-bottom:12px">
+      <strong style="color:#1565C0">📎 Excel em anexo:</strong>
+      <span style="color:#444;font-size:13px"> prospectos_unimidia_${dataStr}.xlsx</span>
+      <div style="color:#666;font-size:12px;margin-top:6px">
+        Colunas: Nome · Segmento · Telefone · Endereço · Avaliação · Modelo de Mensagem · Mensagem Personalizada
+      </div>
+    </div>
+
+    <!-- Mensagens prontas -->
+    <div style="background:white;border-radius:8px;padding:16px;margin-bottom:12px">
+      <div style="font-weight:700;color:#1a237e;margin-bottom:10px">💬 Modelos de mensagem incluídos</div>
+      <table style="width:100%;font-size:12px;color:#555">
+        <tr>
+          <td style="padding:4px 8px;background:#E3F2FD;border-radius:4px;margin:2px"><strong>A</strong> — Bares/Restaurantes/Cafés</td>
+          <td style="padding:4px 8px;background:#E8F5E9;border-radius:4px;margin:2px"><strong>B</strong> — Hotéis & Hostels</td>
+        </tr>
+        <tr><td style="height:6px"></td></tr>
+        <tr>
+          <td style="padding:4px 8px;background:#F3E5F5;border-radius:4px;margin:2px"><strong>C</strong> — Clínicas & Consultórios</td>
+          <td style="padding:4px 8px;background:#FFF8E1;border-radius:4px;margin:2px"><strong>D</strong> — Genérico (alternativo)</td>
+        </tr>
       </table>
-      <p style="color:#666;font-size:12px;margin-top:16px">
-        Arquivo Excel com mensagens personalizadas em anexo.<br>
-        Gerado às ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
-      </p>`;
+    </div>
+
+    <!-- Próximos passos -->
+    <div style="background:#E8EAF6;border-radius:8px;padding:14px;margin-bottom:16px">
+      <div style="font-weight:700;color:#283593;margin-bottom:8px">🚀 Próximos passos</div>
+      <ol style="color:#3949AB;font-size:13px;margin:0;padding-left:18px;line-height:1.8">
+        <li>Abrir o Excel e revisar os contatos</li>
+        <li>Abrir o CRM Funil → aba <strong>Prospecção</strong></li>
+        <li>Designar vendedores para cada prospect</li>
+        <li>Iniciar envios via WhatsApp</li>
+      </ol>
+    </div>
+
+    <!-- Rodapé -->
+    <p style="color:#999;font-size:11px;text-align:center;margin-top:8px">
+      Gerado automaticamente pelo Robô 1 • Unimidia CRM • ${geradoEm}<br>
+      <a href="https://pfunil.ia.br" style="color:#1565C0">pfunil.ia.br</a>
+    </p>
+  </div>
+</div>`;
 
     try {
       const admins = await sql`
