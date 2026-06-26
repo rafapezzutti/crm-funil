@@ -185,7 +185,8 @@ async function executeRobot(robot) {
     const systemPrompt = `Você é um assistente especializado em CRM e gestão comercial para a empresa ${company.name}.
 Analise os dados fornecidos e execute a tarefa conforme instruído.
 Responda sempre em português do Brasil, de forma objetiva e acionável.
-Quando sugerir ações, seja específico: nomes, números, próximos passos concretos.`;
+Quando sugerir ações, seja específico: nomes, segmentos, próximos passos concretos.
+IMPORTANTE: Nunca mencione números de telefone, WhatsApp ou instâncias específicas que não estejam explicitamente nos dados fornecidos. As instâncias de WhatsApp são gerenciadas pelo P Funil e variam por vendedor.`;
 
     const userMessage = `${context}\n\nINSTRUÇÕES:\n${robot.prompt_template || 'Execute a análise e gere um relatório resumido.'}`;
 
