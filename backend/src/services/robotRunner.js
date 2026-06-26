@@ -1,5 +1,6 @@
 const Anthropic  = require('@anthropic-ai/sdk');
 const { sql }    = require('../config/db');
+const { Resend } = require('resend');
 
 const client = new Anthropic.default({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -86,6 +87,74 @@ async function buildContext(robot, company) {
       ctx += `- Score médio: ${stats.score_medio || 0}\n`;
     }
 
+    else if (robot.tipo === 'unimidia_revisao' || robot.tipo === 'unimidia_relatorio') {
+      const hoje        = new Date().toISOString().split('T')[0];
+      const semanaAtras = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+
+      const [totaisHoje] = await sql`
+        SELECT
+          COUNT(*) AS total,
+          COUNT(*) FILTER (WHERE status = 'quente')        AS quentes,
+          COUNT(*) FILTER (WHERE status = 'morno')         AS mornos,
+          COUNT(*) FILTER (WHERE status = 'sem_resposta')  AS sem_resposta,
+          COUNT(*) FILTER (WHERE status = 'visualizado')   AS visualizados,
+          COUNT(*) FILTER (WHERE status = 'frio')          AS frios,
+          COUNT(*) FILTER (WHERE status = 'nao_entregue')  AS nao_entregues
+        FROM prospecting_records
+        WHERE company_id = ${company.id}
+          AND data_abordagem = ${hoje}::date`;
+
+      const statsPorSegmento = await sql`
+        SELECT crm AS segmento, COUNT(*) AS total,
+          COUNT(*) FILTER (WHERE status = 'quente') AS quentes,
+          COUNT(*) FILTER (WHERE status = 'morno')  AS mornos,
+          COUNT(*) FILTER (WHERE status = 'sem_resposta') AS sem_resposta
+        FROM prospecting_records
+        WHERE company_id = ${company.id} AND data_abordagem = ${hoje}::date
+        GROUP BY crm ORDER BY quentes DESC`;
+
+      const statsPorVendedor = await sql`
+        SELECT COALESCE(u.name, 'Sem vendedor') AS vendedor,
+          COUNT(*) AS total,
+          COUNT(*) FILTER (WHERE r.status = 'quente')      AS quentes,
+          COUNT(*) FILTER (WHERE r.status = 'morno')       AS mornos,
+          COUNT(*) FILTER (WHERE r.status = 'sem_resposta') AS sem_resposta
+        FROM prospecting_records r
+        LEFT JOIN users u ON u.id = r.vendedor_id
+        WHERE r.company_id = ${company.id} AND r.data_abordagem = ${hoje}::date
+        GROUP BY u.name ORDER BY quentes DESC`;
+
+      const melhoresSemana = await sql`
+        SELECT analise, status, crm AS segmento, nome
+        FROM prospecting_records
+        WHERE company_id = ${company.id}
+          AND status = 'quente'
+          AND data_abordagem >= ${semanaAtras}::date
+          AND analise IS NOT NULL
+        ORDER BY updated_at DESC LIMIT 5`;
+
+      const t = totaisHoje;
+      ctx += `DATA: ${hoje}\n`;
+      ctx += `TOTAIS DO DIA: Total=${t.total} | Quentes=${t.quentes} | Mornos=${t.mornos} | Frios=${t.frios} | Visualizados=${t.visualizados} | Sem resposta=${t.sem_resposta} | Não entregues=${t.nao_entregues}\n`;
+      ctx += `Taxa de resposta: ${t.total > 0 ? Math.round(100*(Number(t.quentes)+Number(t.mornos)+Number(t.frios)+Number(t.visualizados))/Number(t.total)) : 0}%\n\n`;
+
+      if (statsPorSegmento.length > 0) {
+        ctx += `POR SEGMENTO:\n`;
+        ctx += statsPorSegmento.map(s => `- ${s.segmento}: total=${s.total} | quentes=${s.quentes} | mornos=${s.mornos} | sem_resposta=${s.sem_resposta}`).join('\n');
+        ctx += '\n\n';
+      }
+      if (statsPorVendedor.length > 0) {
+        ctx += `POR VENDEDOR:\n`;
+        ctx += statsPorVendedor.map(v => `- ${v.vendedor}: total=${v.total} | quentes=${v.quentes} | mornos=${v.mornos} | sem_resposta=${v.sem_resposta}`).join('\n');
+        ctx += '\n\n';
+      }
+      if (melhoresSemana.length > 0) {
+        ctx += `LEADS QUENTES DA SEMANA:\n`;
+        ctx += melhoresSemana.map(m => `- ${m.nome} (${m.segmento}): ${m.analise || 'sem análise'}`).join('\n');
+        ctx += '\n';
+      }
+    }
+
     else {
       // Tipo genérico — resumo básico
       const [count] = await sql`SELECT COUNT(*) AS total FROM leads WHERE company_id = ${company.id} AND ativo = true`;
@@ -137,6 +206,47 @@ Quando sugerir ações, seja específico: nomes, números, próximos passos conc
       VALUES (${robot.id}, ${robot.company_id}, 'ok', ${output}, ${duration})`;
 
     await sql`UPDATE robots SET updated_at = NOW() WHERE id = ${robot.id}`;
+
+    // Envio de e-mail para robôs unimidia (usa RESEND_API_KEY do pfunil)
+    if (
+      ['unimidia_revisao', 'unimidia_relatorio'].includes(robot.tipo) &&
+      process.env.RESEND_API_KEY &&
+      !process.env.RESEND_API_KEY.startsWith('re_xxx')
+    ) {
+      try {
+        const admins = await sql`
+          SELECT u.email, u.name FROM company_members cm
+          JOIN users u ON u.id = cm.user_id
+          WHERE cm.company_id = ${robot.company_id}
+            AND cm.role IN ('admin', 'master', 'vendedor')
+            AND u.email IS NOT NULL`;
+        const recipients = [...new Set(admins.map(a => a.email))];
+        if (recipients.length > 0) {
+          const hoje = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+          const resendClient = new Resend(process.env.RESEND_API_KEY);
+          await resendClient.emails.send({
+            from:    process.env.RESEND_FROM || 'Unimidia CRM <onboarding@resend.dev>',
+            to:      recipients,
+            subject: `${company.name} — ${robot.name} · ${hoje}`,
+            html:    `<div style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto">
+              <div style="background:#0d1b4b;padding:20px;border-radius:8px 8px 0 0">
+                <h2 style="color:white;margin:0">📊 ${robot.name}</h2>
+                <p style="color:#90CAF9;margin:4px 0 0">${company.name} · ${hoje}</p>
+              </div>
+              <div style="background:#f9f9f9;padding:20px;border:1px solid #ddd;border-top:none;white-space:pre-wrap;font-size:14px;color:#333">
+${output}
+              </div>
+              <p style="text-align:center;color:#aaa;font-size:11px;margin-top:8px">
+                Gerado automaticamente pelo Robô ${robot.id} · <a href="https://pfunil.ia.br">pfunil.ia.br</a>
+              </p>
+            </div>`,
+          });
+          console.log(`📧 Robô #${robot.id} — e-mail enviado para: ${recipients.join(', ')}`);
+        }
+      } catch (emailErr) {
+        console.warn(`⚠️  Robô #${robot.id} — erro ao enviar e-mail: ${emailErr.message}`);
+      }
+    }
 
     console.log(`✅ Robô #${robot.id} concluído em ${duration}ms`);
     return output;

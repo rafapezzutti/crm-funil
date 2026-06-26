@@ -33,11 +33,12 @@ const allowedOrigins = [
   ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL.replace('https://', 'https://www.')] : []),
 ].filter(Boolean);
 app.use((req, res, next) => {
-  // Rotas sem restricao de origem (chamadas de servicos externos)
+  // Rotas sem restricao de origem (chamadas de servicos externos e Cowork)
   if (
     req.path.startsWith('/api/leads/prospecting-sync') ||
     req.path === '/api/whatsapp/webhook' ||
-    req.path === '/api/prospecting/daily-sync'
+    req.path === '/api/prospecting/daily-sync' ||
+    req.path.startsWith('/api/robots/')
   ) {
     return cors({ origin: true, credentials: false })(req, res, next);
   }
