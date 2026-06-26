@@ -17,7 +17,7 @@ async function reloadSchedules() {
       FROM robots r
       JOIN companies c ON c.id = r.company_id
       WHERE r.ativo = true
-        AND r.trigger_type = 'cron'
+        AND r.trigger_type IN ('cron', 'ambos')
         AND r.cron_expr IS NOT NULL`;
 
     let agendados = 0;
