@@ -29,6 +29,8 @@ const allowedOrigins = [
   process.env.FRONTEND_URL || 'http://localhost:5173',
   'http://localhost:5173',
   'http://localhost:3000',
+  // Domínios Render (deploy direto)
+  'https://crm-funil-app.onrender.com',
   // Adicionar variante www caso o domínio seja acessado com prefixo
   ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL.replace('https://', 'https://www.')] : []),
 ].filter(Boolean);
