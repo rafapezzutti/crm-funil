@@ -430,4 +430,199 @@ router.post('/analyze-chats', async (req, res) => {
 // ── A partir daqui: JWT obrigatório ──────────────────────────────────────────
 router.use(auth);
 
-// ── PUT /api/whatsapp/evolution/instance ──────────
+
+// ── PUT /api/whatsapp/evolution/instance ─────────────────────────────────────
+// Permite admin/master sobrescrever qual instância Evolution esta empresa usa
+router.put('/evolution/instance', async (req, res) => {
+  if (!['admin','master'].includes(req.role)) {
+    return res.status(403).json({ error: 'Apenas admin pode alterar a instância.' });
+  }
+  const { instanceName } = req.body;
+  if (!instanceName) return res.status(400).json({ error: 'instanceName é obrigatório.' });
+  try {
+    await sql`
+      INSERT INTO company_settings (company_id, whatsapp_instance)
+      VALUES (${req.companyId}, ${instanceName})
+      ON CONFLICT (company_id) DO UPDATE
+      SET whatsapp_instance = ${instanceName}, updated_at = NOW()`;
+    res.json({ ok: true, instanceName });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/whatsapp/evolution/connect ──────────────────────────────────────
+router.post('/evolution/connect', async (req, res) => {
+  if (!evoUrl()) return res.status(503).json({ error: 'EVOLUTION_API_URL não configurada no servidor.' });
+
+  try {
+    const instanceName = await getInstanceName(req.companyId);
+    const exists       = await instanceExists(instanceName);
+
+    if (!exists) {
+      const webhookUrl = `${(process.env.BACKEND_URL || 'https://api.pfunil.ia.br').replace(/\/$/, '')}/api/whatsapp/webhook`;
+
+      const created = await evoFetch('/instance/create', {
+        method: 'POST',
+        body: JSON.stringify({
+          instanceName,
+          qrcode:      true,
+          integration: 'WHATSAPP-BAILEYS',
+          webhook: {
+            url:      webhookUrl,
+            byEvents: false,
+            events:   ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'],
+          },
+        }),
+      });
+
+      if (!created.ok) {
+        console.error('[evolution create]', created.data);
+        return res.status(500).json({
+          error: 'Erro ao criar instância: ' + (created.data?.error?.message || JSON.stringify(created.data)),
+        });
+      }
+    }
+
+    // Pegar QR code
+    const qrRes = await evoFetch(`/instance/connect/${encodeURIComponent(instanceName)}`);
+
+    // base64 é o PNG pronto para <img src>
+    // code é a string raw do QR (nao é imagem) — nao usar como src
+    const qrBase64 = qrRes.data?.base64
+      || qrRes.data?.qrcode?.base64
+      || null;
+
+    // Garantir prefixo data URI
+    const qr = qrBase64
+      ? (qrBase64.startsWith('data:') ? qrBase64 : 'data:image/png;base64,' + qrBase64)
+      : null;
+
+    res.json({
+      instanceName,
+      qr,
+      qrCode: qrRes.data?.code || null,  // string raw, util para debug
+      state: qrRes.data?.state || 'qrcode',
+    });
+  } catch (err) {
+    console.error('[evolution connect]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/whatsapp/evolution/status ────────────────────────────────────────
+router.get('/evolution/status', async (req, res) => {
+  if (!evoUrl()) return res.json({ connected: false, state: 'not_configured' });
+
+  try {
+    const instanceName = await getInstanceName(req.companyId);
+
+    const exists = await instanceExists(instanceName);
+    if (!exists) return res.json({ connected: false, state: 'not_created', instanceName });
+
+    const stateRes = await evoFetch(`/instance/connectionState/${encodeURIComponent(instanceName)}`);
+    if (!stateRes.ok) return res.json({ connected: false, state: 'disconnected', instanceName });
+
+    // Normalizar — varia entre versões
+    const state = stateRes.data?.instance?.state
+      || stateRes.data?.state
+      || stateRes.data?.connectionStatus
+      || 'unknown';
+
+    const connected = state === 'open';
+
+    // Buscar número do telefone conectado
+    let phone = null;
+    if (connected) {
+      const infoRes = await evoFetch(`/instance/fetchInstances?instanceName=${encodeURIComponent(instanceName)}`);
+      if (infoRes.ok) {
+        const list = Array.isArray(infoRes.data) ? infoRes.data : [infoRes.data];
+        const inst = list.find(i =>
+          i?.name                   === instanceName ||
+          i?.instance?.instanceName === instanceName ||
+          i?.instanceName           === instanceName
+        );
+        // Evolution API v2 usa ownerJid; versões antigas usam owner
+        const raw = inst?.ownerJid || inst?.instance?.owner || inst?.owner || null;
+        if (raw) phone = raw.replace(/@s\.whatsapp\.net$/, '').replace(/@c\.us$/, '');
+      }
+    }
+
+    res.json({ connected, state, instanceName, phone });
+  } catch (err) {
+    console.error('[evolution status]', err.message);
+    res.json({ connected: false, state: 'error', error: err.message });
+  }
+});
+
+// ── DELETE /api/whatsapp/evolution/disconnect ─────────────────────────────────
+router.delete('/evolution/disconnect', async (req, res) => {
+  if (!evoUrl()) return res.status(503).json({ error: 'EVOLUTION_API_URL não configurada.' });
+
+  try {
+    const instanceName = await getInstanceName(req.companyId);
+    await evoFetch(`/instance/logout/${encodeURIComponent(instanceName)}`, { method: 'DELETE' });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[evolution disconnect]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/whatsapp/assessment/:id ────────────────────────────────────────
+router.post('/assessment/:id', async (req, res) => {
+  try {
+    const { to, patientName } = req.body;
+    if (!to) return res.status(400).json({ error: 'Número de telefone é obrigatório.' });
+
+    const [form] = await sql`
+      SELECT af.token, af.physio_name,
+             c.razao, c.contato,
+             co.name AS company_name
+      FROM   assessment_forms af
+      JOIN   clients   c  ON c.id  = af.client_id
+      JOIN   companies co ON co.id = af.company_id
+      WHERE  af.id         = ${req.params.id}
+        AND  af.company_id = ${req.companyId}`;
+
+    if (!form) return res.status(404).json({ error: 'Ficha não encontrada.' });
+
+    const link    = `${APP_URL}/avaliacao/${form.token}`;
+    const name    = patientName || form.razao || form.contato || 'paciente';
+    const physio  = form.physio_name ? ` com ${form.physio_name}` : '';
+    const company = form.company_name;
+
+    const text = [
+      `Olá, ${name}! 👋`,
+      ``,
+      `*Ficha de Avaliação Fisioterapêutica*`,
+      `Sua ficha foi preparada${physio} — ${company}.`,
+      ``,
+      `Acesse o link abaixo para preencher online:`,
+      link,
+      ``,
+      `⏱ O link é válido por 30 dias.`,
+    ].join('\n');
+
+    await sendWhatsApp(to, text);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[whatsapp assessment]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/whatsapp/message ───────────────────────────────────────────────
+router.post('/message', async (req, res) => {
+  try {
+    const { to, text } = req.body;
+    if (!to || !text) return res.status(400).json({ error: 'Telefone e mensagem são obrigatórios.' });
+    await sendWhatsApp(to, text);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[whatsapp message]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+module.exports = router;
