@@ -333,9 +333,26 @@ router.get('/:id/context', robotAuth, async (req, res) => {
         ORDER BY updated_at DESC
         LIMIT 10`;
 
+      // Instância WhatsApp configurada para esta empresa (para o Cowork saber qual usar)
+      const [cs] = await sql`
+        SELECT whatsapp_instance FROM company_settings WHERE company_id = ${companyId}`;
+
+      // Mensagens recebidas hoje no inbox (para análise direta pelo Cowork)
+      const inboxHoje = cs?.whatsapp_instance ? await sql`
+        SELECT phone, message_text, received_at
+        FROM whatsapp_inbox
+        WHERE company_id = ${companyId}
+          AND received_at::date = ${hoje}::date
+        ORDER BY received_at ASC
+        LIMIT 200` : [];
+
       context = {
         tipo: 'unimidia_revisao',
         data_hoje: hoje,
+        whatsapp_instance: cs?.whatsapp_instance || null,
+        whatsapp_configurado: !!cs?.whatsapp_instance,
+        total_respostas_inbox: inboxHoje.length,
+        inbox_hoje: inboxHoje,
         totais_hoje: totaisHoje,
         prospectados_hoje: prospectadosHoje,
         stats_por_segmento: statsPorSegmento,
@@ -501,14 +518,18 @@ async function executeUnimidiaProspeccao(robot) {
     const muniIdx    = typeof state.municipio_idx === 'number' ? state.municipio_idx : 0;
     console.log(`[Robot ${robotId}] Iniciando no município idx ${muniIdx}: "${MUNICIPIOS_BRASIL[muniIdx % MUNICIPIOS_BRASIL.length]}"`);
 
-    // ── 2. Carry-forward: leads de ontem não abordados ────────────────────────
+    // ── 2. Carry-forward: leads da última execução não abordados ─────────────
     // "Não abordado" = sem_resposta ou nao_entregue (vendedor ainda não enviou / falhou entrega)
+    // Usa MAX(data_abordagem) em vez de "ontem" para funcionar corretamente após fins de semana/feriados
     const leadsFw = await sql`
       SELECT id, nome, empresa, telefone, crm AS segmento, status,
              place_id, whatsapp_msg AS mensagem, maps_url, rating
       FROM prospecting_records
       WHERE company_id = ${companyId}
-        AND data_abordagem = ${ontem}::date
+        AND data_abordagem = (
+          SELECT MAX(data_abordagem) FROM prospecting_records
+          WHERE company_id = ${companyId}
+        )::date
         AND status IN ('sem_resposta', 'nao_entregue')`;
     console.log(`[Robot ${robotId}] ${leadsFw.length} leads não abordados ontem (carry-forward).`);
 
@@ -989,30 +1010,4 @@ router.post('/:id/run', async (req, res) => {
 router.get('/:id/logs', async (req, res) => {
   try {
     const logs = await sql`
-      SELECT * FROM robot_logs
-      WHERE robot_id = ${req.params.id}
-      ORDER BY created_at DESC
-      LIMIT 50`;
-    res.json(logs);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── POST /api/robots/:id/log — Claude Cowork registra log (com JWT) ────────────
-router.post('/:id/log', async (req, res) => {
-  const { status, output, duration_ms } = req.body;
-  try {
-    const [robot] = await sql`SELECT company_id FROM robots WHERE id = ${req.params.id}`;
-    if (!robot) return res.status(404).json({ error: 'Robô não encontrado.' });
-    const [log] = await sql`
-      INSERT INTO robot_logs (robot_id, company_id, status, output, duration_ms)
-      VALUES (${req.params.id}, ${robot.company_id}, ${status||'ok'}, ${output||null}, ${duration_ms||null})
-      RETURNING *`;
-    res.json(log);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-module.exports = router;
+      SEL
