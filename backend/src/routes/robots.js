@@ -1007,7 +1007,34 @@ router.post('/:id/run', async (req, res) => {
 });
 
 // ── GET /api/robots/:id/logs ───────────────────────────────────────────────────
+// ── GET /api/robots/:id/logs ───────────────────────────────────────────────────
 router.get('/:id/logs', async (req, res) => {
   try {
     const logs = await sql`
-      SEL
+      SELECT * FROM robot_logs
+      WHERE robot_id = ${req.params.id}
+      ORDER BY created_at DESC
+      LIMIT 50`;
+    res.json(logs);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/robots/:id/log — Claude Cowork registra log (com JWT) ────────────
+router.post('/:id/log', async (req, res) => {
+  const { status, output, duration_ms } = req.body;
+  try {
+    const [robot] = await sql`SELECT company_id FROM robots WHERE id = ${req.params.id}`;
+    if (!robot) return res.status(404).json({ error: 'Robô não encontrado.' });
+    const [log] = await sql`
+      INSERT INTO robot_logs (robot_id, company_id, status, output, duration_ms)
+      VALUES (${req.params.id}, ${robot.company_id}, ${status||'ok'}, ${output||null}, ${duration_ms||null})
+      RETURNING *`;
+    res.json(log);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+module.exports = router;
