@@ -18,6 +18,7 @@ const GROUPS = [
     { icon:'👥', label:'Vendedores',    path:'/admin',           roles:['admin','master'] },
     { icon:'⚙️', label:'Configurações', path:'/configuracoes',   roles:['admin','master'] },
     { icon:'🤖', label:'Robôs',         path:'/robos',           roles:['admin','master'] },
+    { icon:'🚀', label:'Ops',           path:'/ops',             roles:['admin','master'] },
     { icon:'🏢', label:'Empresas',      path:'/master/empresas', roles:['master'] },
   ]},
 ];
