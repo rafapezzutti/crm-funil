@@ -146,11 +146,15 @@ router.post('/webhook', async (req, res) => {
       for (const msg of messages) {
         if (msg?.key?.fromMe) continue; // ignorar mensagens enviadas por nós
 
-        const from = (msg?.key?.remoteJid || '')
+        const rawJid = msg?.key?.remoteJid || '';
+        const isLid = rawJid.endsWith('@lid');
+        const from = rawJid
           .replace(/@s\.whatsapp\.net$/, '')
-          .replace(/@c\.us$/, '');
+          .replace(/@c\.us$/, '')
+          .replace(/@lid$/, '');
 
-        if (!from || from.includes('@')) continue; // grupos, etc.
+        // Pular grupos (contêm @g.us ou outro @ que não seja @lid/@s.whatsapp.net/@c.us)
+        if (!from || (rawJid.includes('@') && !rawJid.match(/@(s\.whatsapp\.net|c\.us|lid)$/))) continue;
 
         const text =
           msg?.message?.conversation ||
@@ -167,7 +171,7 @@ router.post('/webhook', async (req, res) => {
             ${instanceName},
             ${from},
             ${text},
-            ${JSON.stringify({ ts: msg?.messageTimestamp, status: msg?.status })}
+            ${JSON.stringify({ ts: msg?.messageTimestamp, status: msg?.status, is_lid: isLid || undefined, raw_jid: isLid ? rawJid : undefined })}
           )`;
 
         // 2. Se existir lead no Funil, registrar atividade também
@@ -221,10 +225,12 @@ router.post('/webhook', async (req, res) => {
       for (const upd of updates) {
         // status 3 = lido (READ) na Evolution API
         if (upd?.update?.status !== 3) continue;
-        const to = (upd?.key?.remoteJid || '')
+        const toRaw = upd?.key?.remoteJid || '';
+        const to = toRaw
           .replace(/@s\.whatsapp\.net$/, '')
-          .replace(/@c\.us$/, '');
-        if (!to || to.includes('@')) continue;
+          .replace(/@c\.us$/, '')
+          .replace(/@lid$/, '');
+        if (!to || (toRaw.includes('@') && !toRaw.match(/@(s\.whatsapp\.net|c\.us|lid)$/))) continue;
 
         const tail = to.slice(-8);
         const hoje = new Date().toISOString().split('T')[0];
