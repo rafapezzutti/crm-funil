@@ -505,4 +505,61 @@ router.post('/consent', auth, async (req, res) => {
   }
 });
 
+
+// ── POST /api/prospecting/places-for-claude ──────────────────────────────────
+// Endpoint sem auth para o Claude/Cowork chamar diretamente.
+// Body: { token, queries: ['pet shop'], city: 'Cascavel PR Brasil', limit: 20 }
+const CLAUDE_TOKEN = 'claude_psolucoes_places_2026';
+
+router.post('/places-for-claude', async (req, res) => {
+  if (req.body.token !== CLAUDE_TOKEN) return res.status(401).json({ error: 'Unauthorized' });
+  if (!PLACES_KEY())                   return res.status(500).json({ error: 'GOOGLE_PLACES_KEY nao configurada.' });
+
+  const { queries = [], city = 'Cascavel PR Brasil', limit = 20 } = req.body;
+  if (!Array.isArray(queries) || queries.length === 0)
+    return res.status(400).json({ error: 'queries deve ser array nao-vazio' });
+
+  const seen    = new Set();
+  const results = [];
+
+  try {
+    for (const q of queries) {
+      if (results.length >= limit) break;
+      const query = `${q} ${city}`;
+      console.log(`[places-for-claude] "${query}"`);
+      let pagetoken = null;
+      let pages     = 0;
+      do {
+        if (pagetoken) await sleep(2100);
+        const resp = await placesSearch(query, pagetoken);
+        if (resp.status !== 'OK' && resp.status !== 'ZERO_RESULTS') break;
+        for (const place of (resp.results || [])) {
+          if (results.length >= limit) break;
+          if (seen.has(place.place_id)) continue;
+          seen.add(place.place_id);
+          await sleep(150);
+          const det = await placeDetails(place.place_id);
+          if (det.status !== 'OK') continue;
+          const r = det.result;
+          if (!r.formatted_phone_number) continue;
+          results.push({
+            nome:     r.name || place.name,
+            phone:    r.formatted_phone_number,
+            endereco: r.formatted_address || place.formatted_address || '',
+            rating:   r.rating || place.rating || 0,
+            reviews:  r.user_ratings_total || place.user_ratings_total || 0,
+            place_id: place.place_id,
+            query:    q,
+          });
+        }
+        pagetoken = resp.next_page_token || null;
+        pages++;
+      } while (pagetoken && pages < 3 && results.length < limit);
+    }
+    res.json({ total: results.length, results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

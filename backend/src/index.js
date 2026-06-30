@@ -40,6 +40,7 @@ app.use((req, res, next) => {
     req.path.startsWith('/api/leads/prospecting-sync') ||
     req.path === '/api/whatsapp/webhook' ||
     req.path === '/api/prospecting/daily-sync' ||
+    req.path === '/api/prospecting/places-for-claude' ||
     req.path.startsWith('/api/robots/')
   ) {
     return cors({ origin: true, credentials: false })(req, res, next);
